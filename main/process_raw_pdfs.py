@@ -3,7 +3,8 @@ import json
 import pdfplumber
 import sys
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Thêm thư mục gốc vào path để import 'source'
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
 from source.chunking.hierarchical_splitter import HierarchicalLegalSplitter
 
@@ -68,8 +69,10 @@ def process_pdfs(data_raw_dir, data_cleaned_dir, output_json):
 
 
 if __name__ == "__main__":
-    RAW_DIR = "Data/raw"
-    CLEANED_DIR = "Data/cleaned"
-    JSON_OUT = "Data/chunks/traffic_chunks.json"
+    # Tự động tính toán đường dẫn tuyệt đối dựa trên vị trí file script
+    BASE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
+    RAW_DIR = os.path.join(BASE_DIR, "Data/raw")
+    CLEANED_DIR = os.path.join(BASE_DIR, "Data/cleaned")
+    JSON_OUT = os.path.join(BASE_DIR, "Data/chunks/traffic_chunks.json")
     
     process_pdfs(RAW_DIR, CLEANED_DIR, JSON_OUT)

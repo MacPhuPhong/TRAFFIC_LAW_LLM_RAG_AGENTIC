@@ -3,10 +3,15 @@ import sys
 from dotenv import load_dotenv
 
 # Đảm bảo import được source
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Thêm thư mục gốc vào path để import 'source'
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
-# Load enviroment variables từ cấp thư mục cha (GitHub1/.env)
-load_dotenv(dotenv_path="../.env")
+# Tự động tính toán đường dẫn tuyệt đối dự án
+BASE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
+PROJECT_ROOT = os.path.join(BASE_DIR, '..')
+
+# Load enviroment variables từ file .env ở gốc dự án
+load_dotenv(dotenv_path=os.path.join(PROJECT_ROOT, ".env"))
 
 from source.core.config import Settings
 from source.retrieval.hybrid_retriever import HybridRetriever
@@ -15,20 +20,21 @@ import google.generativeai as genai
 def chat():
     settings = Settings()
     
-    gemini_key = os.getenv("API_KEY") or os.getenv("GEMINI_API_KEY")
+    # Lấy API Key từ settings hoặc môi trường
+    gemini_key = settings.api_key or os.getenv("API_KEY") or os.getenv("GEMINI_API_KEY")
     if not gemini_key:
-        print("❌ LỖI: Không tìm thấy API_KEY trong file ../.env. Vui lòng thêm cấu hình API_KEY=AIzaSy... để tiếp tục.")
+        print("❌ LỖI: Không tìm thấy API_KEY trong file .env.")
         return
         
     genai.configure(api_key=gemini_key)
-    # Khởi tạo model AI
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    # Khởi tạo model AI (Sử dụng bản Flash-Latest để có hạn mức cao và ổn định)
+    model = genai.GenerativeModel('gemini-flash-latest')
     
     print("⏳ Khởi tạo Trợ lý AI và Kết nối Qdrant Database (Hybrid Search)...")
     try:
         retriever = HybridRetriever(settings=settings, collection_name="Traffic_Law_Hybrid")
         # Phải bắt buộc có data chunks để build cái BM25 index (Lexical search)
-        chunk_path = "Data/chunks/traffic_chunks.json"
+        chunk_path = os.path.join(BASE_DIR, "Data/chunks/traffic_chunks.json")
         if os.path.exists(chunk_path):
             import json
             with open(chunk_path, 'r', encoding='utf-8') as f:

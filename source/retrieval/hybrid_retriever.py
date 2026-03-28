@@ -11,7 +11,7 @@ class HybridRetriever:
     def __init__(self, settings: Settings, collection_name: str = "Traffic_Law_Hybrid"):
         self.settings = settings
         self.collection_name = collection_name
-        self.client = QdrantClient(host="localhost", port=6333)
+        self.client = QdrantClient(host=self.settings.qdrant_host, port=self.settings.qdrant_port)
         self.embedding_model = Sentences_Transformer_Embedding(settings)
         self.bm25 = None
         self.corpus_chunks = []

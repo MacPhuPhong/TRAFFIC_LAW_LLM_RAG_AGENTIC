@@ -1,0 +1,11 @@
+question,expected_answer,expected_article,category
+"Người điều khiển xe máy có nồng độ cồn vượt 0,25mg/l khí thở bị phạt bao nhiêu tiền?","Phạt tiền từ 6.000.000 đến 8.000.000 đồng","Điều 6","Nong_Do_Con"
+"Xe máy vượt tốc độ quy định từ 10km/h đến dưới 20km/h bị phạt bao nhiêu?","Phạt tiền từ 800.000 đồng đến 1.000.000 đồng","Điều 6","Toc_Do"
+"Ô tô vượt đèn đỏ tại ngã tư bị phạt thế nào?","Phạt tiền từ 4.000.000 đến 6.000.000 đồng","Điều 5","Den_Tin_Hieu"
+"Không đội mũ bảo hiểm khi đi xe máy phạt bao nhiêu?","Phạt tiền từ 400.000 đồng đến 600.000 đồng","Điều 11","Mu_Bao_Hiem"
+"Xe ô tô không có bảo hiểm trách nhiệm dân sự bắt buộc bị phạt gì?","Phạt tiền từ 1.000.000 đến 2.000.000 đồng","Điều 21","Bao_Hiem"
+"Người điều khiển xe máy không có giấy phép lái xe bị phạt bao nhiêu?","Phạt tiền từ 1.000.000 đến 2.000.000 đồng","Điều 21","GPLX"
+"Xe máy dừng đỗ trên cầu có bị phạt không?","Phạt tiền từ 100.000 đến 200.000 đồng","Điều 9","Dung_Do"
+"Đi xe máy ban đêm không bật đèn chiếu sáng phạt bao nhiêu?","Phạt tiền từ 100.000 đến 200.000 đồng","Điều 18","Den_Chieu_Sang"
+"Xe tải chạy quá tốc độ quy định trên 35km/h bị phạt thế nào?","Phạt tiền từ 10.000.000 đến 14.000.000 đồng","Điều 7","Toc_Do"
+"Điều khiển xe ô tô khi có nồng độ cồn trong máu vượt 80mg bị phạt bao nhiêu?","Phạt tiền từ 30.000.000 đến 40.000.000 đồng","Điều 5","Nong_Do_Con"

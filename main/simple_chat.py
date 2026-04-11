@@ -17,6 +17,7 @@ load_dotenv(dotenv_path=os.path.join(PROJECT_ROOT, ".env"))
 from source.core.config import Settings
 from source.retrieval.hybrid_retriever import HybridRetriever
 import google.generativeai as genai
+from rank_bm25 import BM25Okapi
 
 class AgenticTrafficChat:
     def __init__(self, settings: Settings):
@@ -26,7 +27,7 @@ class AgenticTrafficChat:
         # Cấu hình Gemini
         gemini_key = settings.api_key or os.getenv("API_KEY")
         genai.configure(api_key=gemini_key)
-        self.model = genai.GenerativeModel('gemini-flash-latest')
+        self.model = genai.GenerativeModel('gemini-2.5-flash')
         
         # Khởi tạo Retriever
         self.retriever = HybridRetriever(settings=settings, collection_name="Traffic_Law_Hybrid")
@@ -43,10 +44,10 @@ class AgenticTrafficChat:
             with open(chunk_path, 'r', encoding='utf-8') as f:
                 self.retriever.corpus_chunks = json.load(f)
                 tokenized_corpus = [self.retriever._tokenize(c['content']) for c in self.retriever.corpus_chunks]
-                from rank_bm25 import BM25Okapi
+                
                 self.retriever.bm25 = BM25Okapi(tokenized_corpus)
         else:
-            print("⚠️ Cảnh báo: Không tìm thấy traffic_chunks.json. BM25 Search sẽ bị lỗi.")
+            print(" Cảnh báo: Không tìm thấy traffic_chunks.json. BM25 Search sẽ bị lỗi.")
 
     def _call_gemini(self, prompt_name, **kwargs):
         prompt_data = self.prompts[prompt_name]
@@ -70,7 +71,7 @@ class AgenticTrafficChat:
 
     def run_pipeline(self, user_query):
         # 1. Phân loại ý định (Classification)
-        print("🧠 Đang phân tích ý định...")
+        print(" Đang phân tích ý định...")
         category = self._call_gemini("classify_query", query=user_query)
         
         if "0" in category:
@@ -86,14 +87,14 @@ class AgenticTrafficChat:
             return answer
 
         # 2. Câu hỏi Luật (Category 1)
-        print("🔎 Đang sinh đa truy vấn tìm kiếm...")
+        print(" Đang sinh đa truy vấn tìm kiếm...")
         history_str = self._format_history()
         search_queries_str = self._call_gemini("query_generator", history=history_str, query=user_query)
         search_queries = [q.strip() for q in search_queries_str.split("\n") if q.strip()][:3]
         if not search_queries: search_queries = [user_query]
 
         # 3. Tìm kiếm và tổng hợp kết quả (Search & Aggregate)
-        print(f"📡 Đang tìm kiếm dựa trên {len(search_queries)} hướng truy vấn...")
+        print(f" Đang tìm kiếm dựa trên {len(search_queries)} hướng truy vấn...")
         all_results = []
         seen_chunks = set()
         
@@ -132,7 +133,7 @@ def main():
     try:
         agent = AgenticTrafficChat(settings)
     except Exception as e:
-        print(f"❌ Lỗi khởi tạo Agent: {e}")
+        print(f" Lỗi khởi tạo Agent: {e}")
         return
 
     print("\n" + "="*50)
@@ -141,7 +142,7 @@ def main():
     print("Gõ 'q' để thoát. Hệ thống hiện đã có 'Trí nhớ'!\n")
 
     while True:
-        user_input = input("😎 User: ")
+        user_input = input(" User: ")
         if user_input.lower() in ['q', 'quit']:
             break
         if not user_input.strip():
@@ -149,10 +150,10 @@ def main():
 
         try:
             response = agent.run_pipeline(user_input)
-            print(f"\n🚀 Trợ lý Luật:\n{response}\n")
+            print(f"\n Trợ lý Luật:\n{response}\n")
             print("-" * 50)
         except Exception as e:
-            print(f"❌ Có lỗi xảy ra: {e}")
+            print(f" Có lỗi xảy ra: {e}")
 
 if __name__ == "__main__":
     main()

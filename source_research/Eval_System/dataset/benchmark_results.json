@@ -1,0 +1,102 @@
+[
+  {
+    "question": "Người điều khiển xe máy có nồng độ cồn vượt 0,25mg/l khí thở bị phạt bao nhiêu tiền?",
+    "expected_article": "Điều 6",
+    "category": "Nong_Do_Con",
+    "routing_correct": true,
+    "precision_at_5": 1.0,
+    "faithful": true,
+    "latency": 24.824032306671143,
+    "answer_snippet": "Chào bạn, với tư cách là một Luật sư chuyên về Giao thông đường bộ, dựa trên các \"Tài Liệu Tham Khảo\" mà bạn đã cung cấp, tôi xin trả lời thắc mắc của bạn như sau:\n\n**Tóm tắt vấn đề pháp lý:**\nBạn đan"
+  },
+  {
+    "question": "Xe máy vượt tốc độ quy định từ 10km/h đến dưới 20km/h bị phạt bao nhiêu?",
+    "expected_article": "Điều 6",
+    "category": "Toc_Do",
+    "routing_correct": true,
+    "precision_at_5": 1.0,
+    "faithful": true,
+    "latency": 14.777151346206665,
+    "answer_snippet": "Chào bạn, với tư cách là một Luật sư chuyên về Giao thông đường bộ, tôi đã tiếp nhận câu hỏi của bạn về mức xử phạt đối với hành vi điều khiển xe máy vượt tốc độ quy định từ 10km/h đến dưới 20km/h. \n\n"
+  },
+  {
+    "question": "Ô tô vượt đèn đỏ tại ngã tư bị phạt thế nào?",
+    "expected_article": "Điều 5",
+    "category": "Den_Tin_Hieu",
+    "routing_correct": true,
+    "precision_at_5": 1.0,
+    "faithful": true,
+    "latency": 73.08842444419861,
+    "answer_snippet": "Chào bạn, với tư cách là một Luật sư chuyên về Giao thông đường bộ, tôi xin giải đáp thắc mắc của bạn về mức xử phạt đối với xe ô tô khi không chấp hành hiệu lệnh của đèn tín hiệu giao thông (vượt đèn"
+  },
+  {
+    "question": "Không đội mũ bảo hiểm khi đi xe máy phạt bao nhiêu?",
+    "expected_article": "Điều 11",
+    "category": "Mu_Bao_Hiem",
+    "routing_correct": true,
+    "precision_at_5": 1.0,
+    "faithful": true,
+    "latency": 31.396552324295044,
+    "answer_snippet": "Chào bạn. Với tư cách là một Luật sư chuyên về Giao thông đường bộ với hơn 30 năm kinh nghiệm, dựa trên những tài liệu pháp lý được cung cấp, tôi xin tư vấn về mức xử phạt đối với hành vi không đội mũ"
+  },
+  {
+    "question": "Xe ô tô không có bảo hiểm trách nhiệm dân sự bắt buộc bị phạt gì?",
+    "expected_article": "Điều 21",
+    "category": "Bao_Hiem",
+    "routing_correct": true,
+    "precision_at_5": 0.0,
+    "faithful": true,
+    "latency": 33.663429975509644,
+    "answer_snippet": "Chào bạn, với tư cách là Luật sư chuyên về Giao thông đường bộ, dựa trên các tài liệu pháp luật bạn đã cung cấp, tôi xin tư vấn về vấn đề \"Xử phạt đối với xe ô tô không có bảo hiểm trách nhiệm dân sự "
+  },
+  {
+    "question": "Người điều khiển xe máy không có giấy phép lái xe bị phạt bao nhiêu?",
+    "expected_article": "Điều 21",
+    "category": "GPLX",
+    "routing_correct": true,
+    "precision_at_5": 0.0,
+    "faithful": false,
+    "latency": 13.176453828811646,
+    "answer_snippet": "Chào bạn, với tư cách là một Luật sư chuyên về Giao thông đường bộ, tôi đã tiếp nhận câu hỏi của bạn về mức xử phạt đối với hành vi điều khiển xe máy mà không có Giấy phép lái xe.\n\nDựa trên các \"Tài l"
+  },
+  {
+    "question": "Xe máy dừng đỗ trên cầu có bị phạt không?",
+    "expected_article": "Điều 9",
+    "category": "Dung_Do",
+    "routing_correct": true,
+    "precision_at_5": 0.0,
+    "faithful": true,
+    "latency": 192.58597588539124,
+    "answer_snippet": "Chào bạn, với tư cách là một Luật sư chuyên về Giao thông đường bộ, dựa trên các tài liệu pháp lý được cung cấp, tôi xin tư vấn về thắc mắc của bạn như sau:\n\n### Tóm tắt vấn đề pháp lý:\nHành vi điều k"
+  },
+  {
+    "question": "Đi xe máy ban đêm không bật đèn chiếu sáng phạt bao nhiêu?",
+    "expected_article": "Điều 18",
+    "category": "Den_Chieu_Sang",
+    "routing_correct": false,
+    "precision_at_5": 0.0,
+    "faithful": false,
+    "latency": 0,
+    "answer_snippet": ""
+  },
+  {
+    "question": "Xe tải chạy quá tốc độ quy định trên 35km/h bị phạt thế nào?",
+    "expected_article": "Điều 7",
+    "category": "Toc_Do",
+    "routing_correct": false,
+    "precision_at_5": 0.0,
+    "faithful": false,
+    "latency": 0,
+    "answer_snippet": ""
+  },
+  {
+    "question": "Điều khiển xe ô tô khi có nồng độ cồn trong máu vượt 80mg bị phạt bao nhiêu?",
+    "expected_article": "Điều 5",
+    "category": "Nong_Do_Con",
+    "routing_correct": false,
+    "precision_at_5": 0.0,
+    "faithful": false,
+    "latency": 0,
+    "answer_snippet": ""
+  }
+]

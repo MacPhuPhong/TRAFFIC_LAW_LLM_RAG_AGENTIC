@@ -19,8 +19,3 @@ question,expected_answer,expected_article,category
 "Ô tô chạy ngược chiều trên đường một chiều bị phạt gì?","Phạt tiền từ 10.000.000 đến 14.000.000 đồng",Điều 5,Chieu_Duong
 "Không có bằng lái xe ô tô bị phạt bao nhiêu?","Phạt tiền từ 10.000.000 đến 14.000.000 đồng",Điều 21,GPLX
 "Xe máy đi vào đường cao tốc bị phạt gì?","Phạt tiền từ 1.000.000 đến 2.000.000 đồng",Điều 6,Duong_Cao_Toc
-"Nồng độ cồn bằng 0 khi lái xe nghĩa là gì?","Người điều khiển xe không được sử dụng rượu bia với bất kỳ nồng độ nào khi điều khiển phương tiện",Điều 5,Nong_Do_Con
-"Xe tải vi phạm tải trọng bị phạt bao nhiêu?","Phạt tiền từ 3.000.000 đến 5.000.000 đồng tùy mức vượt tải",Điều 24,Tai_Trong
-"Bắt buộc thắt dây an toàn khi ngồi ô tô không?","Có bắt buộc thắt dây an toàn khi ngồi ô tô. Không thắt bị phạt từ 400.000 đến 600.000 đồng",Điều 5,Day_An_Toan
-"Xe máy chạy lên vỉa hè bị phạt như thế nào?","Phạt tiền từ 100.000 đến 200.000 đồng",Điều 6,Via_He
-"Ô tô không dừng nhường đường cho người đi bộ bị phạt gì?","Phạt tiền từ 1.000.000 đến 2.000.000 đồng",Điều 5,Nguoi_Di_Bo

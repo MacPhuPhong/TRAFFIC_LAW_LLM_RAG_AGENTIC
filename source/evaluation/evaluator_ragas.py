@@ -17,7 +17,7 @@ from source.core.config import Settings
 from dotenv import load_dotenv
 
 class RagasEvaluator:
-    def __init__(self, settings: Settings, model_name: str = "gemini-flash-latest"):
+    def __init__(self, settings: Settings, model_name: str = "gemini-3.1-flash-lite"):
         # Load environment variables for LangSmith and API Keys
         current_dir = os.path.dirname(os.path.abspath(__file__))
         env_path = os.path.abspath(os.path.join(current_dir, '..', '..', '..', '..', '.env'))

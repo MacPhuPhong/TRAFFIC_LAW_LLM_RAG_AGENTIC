@@ -36,3 +36,4 @@ qdrant_storage/
 # Project specific
 Data/chunks/traffic_chunks.json
 Data/cleaned/*.txt
+Data/raw/khac/*.doc

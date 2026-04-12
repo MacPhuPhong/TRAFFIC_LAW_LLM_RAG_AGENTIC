@@ -16,7 +16,7 @@ from source.retrieval.hybrid_retriever import HybridRetriever
 from rank_bm25 import BM25Okapi
 
 class TrafficRAGPipeline:
-    def __init__(self, settings: Settings, model_name: str = 'gemini-flash-latest'):
+    def __init__(self, settings: Settings, model_name: str = 'gemini-3.1-flash-lite-preview'):
         self.settings = settings
         self.model_name = model_name
 

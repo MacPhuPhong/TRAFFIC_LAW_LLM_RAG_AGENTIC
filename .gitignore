@@ -34,6 +34,7 @@ qdrant_storage/
 *.swo
 
 # Project specific
-Data/chunks/traffic_chunks.json
-Data/cleaned/*.txt
-Data/raw/khac/*.doc
+Data/
+!Data/README.md
+**/__pycache__/
+*.log

@@ -32,9 +32,13 @@ RE_HEADER_NOISE = re.compile(r"^\d{1,2}/\d{1,2}/\d{2,4},.*about:blank$", re.MULT
 # Footer dạng: "about:blank 52/52"
 RE_FOOTER_NOISE = re.compile(r"^about:blank\s+\d+/\d+$", re.MULTILINE)
 
+# Biểu mẫu rỗng: Cắt các nét đứt ". . ." hoặc "___" (từ 5 ký tự trở lên)
+RE_FORM_DOTS = re.compile(r"(\.{5,}|_{5,})")
+RE_CHECKBOX = re.compile(r"([☐☑\uf06f])")
+
 def clean_text(text: str) -> str:
     """
-    Làm sạch text trích xuất từ PDF.
+    Làm sạch text trích xuất từ PDF: loại nhiễu, nối câu bị gãy, lọc biểu mẫu.
     """
     if not text:
         return ""
@@ -59,34 +63,73 @@ def clean_text(text: str) -> str:
         if RE_FOOTER_NOISE.match(line):
             continue
             
+        # Lọc nét đứt biểu mẫu và Checkbox -> Schema Text
+        line = RE_FORM_DOTS.sub(" [Cần điền thông tin] ", line)
+        line = RE_CHECKBOX.sub(" [Lựa chọn] ", line).strip()
+        
+        if not line or line == "[Cần điền thông tin]" or line == "[Lựa chọn]":
+            continue
+            
         # Thêm dòng vào danh sách nếu là nội dung hợp lệ
         cleaned_lines.append(line)
         
-    return "\n".join(cleaned_lines)
+    # 3. Nối các dòng bị ngắt giữa chừng
+    merged_lines = []
+    for i, line in enumerate(cleaned_lines):
+        if not merged_lines:
+            merged_lines.append(line)
+            continue
+            
+        prev_line = merged_lines[-1]
+        
+        # Nếu dòng trước kết thúc bằng dấu tiếng Việt hoặc chữ cái, và dòng hiện tại bắt đầu bằng chữ thường
+        if re.search(r'[a-zA-ZáàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđĐ,;]$', prev_line[-1:]) \
+           and (line[0].islower() or line[0] in 'áàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđ'):
+            merged_lines[-1] = prev_line + " " + line
+        else:
+            merged_lines.append(line)
+            
+    return "\n".join(merged_lines)
 
 def table_to_markdown(table_data) -> str:
     """
-    Chuyển đổi dữ liệu bảng (list of lists) thành chuỗi Markdown.
+    Chuyển đổi dữ liệu bảng (list of lists) thành chuỗi Markdown, áp dụng Flattening cho merged cells.
     """
     if not table_data:
         return ""
     
     # Lọc bỏ các dòng hoàn toàn rỗng
-    table_data = [row for row in table_data if any(cell and cell.strip() for cell in row)]
+    table_data = [row for row in table_data if any(cell and str(cell).strip() for cell in row)]
     if not table_data:
         return ""
 
+    flattened_data = []
+    # Khởi tạo ma trận lưu vết để nội suy (flatten merged cells)
+    last_seen = [""] * len(table_data[0]) if table_data else []
+    
+    for row in table_data:
+        new_row = []
+        for j, cell in enumerate(row):
+            cell_str = str(cell).replace("\n", " ").strip() if cell else ""
+            
+            # Khôi phục ngữ cảnh (flatten) nếu ô hiện tại bị rỗng do gộp theo chiều dọc
+            if not cell_str and j < len(last_seen) and last_seen[j]:
+                cell_str = last_seen[j]
+            elif cell_str:
+                if j < len(last_seen):
+                    last_seen[j] = cell_str
+                    
+            new_row.append(cell_str)
+        flattened_data.append(new_row)
+
     md_lines = []
-    for i, row in enumerate(table_data):
-        # Làm sạch dữ liệu trong từng ô
-        row_data = [str(cell).replace("\n", " ").strip() if cell else "" for cell in row]
-        
-        md_row = "| " + " | ".join(row_data) + " |"
+    for i, row in enumerate(flattened_data):
+        md_row = "| " + " | ".join(row) + " |"
         md_lines.append(md_row)
         
-        # Thêm dòng phân cách sau dòng tiêu đề (giả định dòng đầu là tiêu đề)
+        # Thêm dòng phân cách sau dòng tiêu đề
         if i == 0:
-            separator = "|" + "|".join(["---"] * len(row_data)) + "|"
+            separator = "|" + "|".join(["---"] * len(row)) + "|"
             md_lines.append(separator)
             
     return "\n".join(md_lines)
@@ -108,15 +151,13 @@ def process_law_pdfs():
         try:
             with pdfplumber.open(pdf_path) as pdf:
                 for page in pdf.pages:
-                    # 1. Tìm các bảng trên trang
-                    tables = page.find_tables()
-                    table_bboxes = [t.bbox for t in tables]
-                    
-                    # 2. Trích xuất text (pdfplumber tự động tránh vùng chứa bảng nếu được cấu hình, 
-                    # hoặc ta sẽ trích xuất tất cả rồi chèn bảng vào sau nếu tìm thấy)
-                    # Ở đây ta sử dụng cách tiếp cận đơn giản: Trích xuất text toàn trang,
-                    # sau đó append bảng ở cuối trang nếu có. 
-                    # Để chuyên nghiệp hơn, ta trích xuất text ngoài vùng bảng.
+                    # 1. Thiết lập bảng khắt khe để tránh table giả
+                    strict_table_settings = {
+                        "vertical_strategy": "lines",
+                        "horizontal_strategy": "lines",
+                        "snap_tolerance": 3,
+                        "join_tolerance": 3
+                    }
                     
                     # Lấy text toàn trang
                     page_text = page.extract_text()
@@ -126,7 +167,7 @@ def process_law_pdfs():
                             full_content.append(cleaned_page_text)
                     
                     # 3. Trích xuất và định dạng bảng
-                    extracted_tables = page.extract_tables()
+                    extracted_tables = page.extract_tables(table_settings=strict_table_settings)
                     for table in extracted_tables:
                         md_table = table_to_markdown(table)
                         if md_table:

@@ -2,7 +2,7 @@
 """
 semantic_chunker.py — Bước 3 & 4: HierarchicalLegalSplitter + Metadata đầy đủ
 ========================================================================
-NÂNG CẤP v2.0:
+NÂNG CẤP v2.1:
   - Fix: Thêm effective_date vào metadata (bắt buộc theo prompt)
   - Fix: Level 2/3 chunking (Khoản → Điểm) khi Điều quá dài
   - Fix: Output path collision với thư mục con (dùng rel_path hash)
@@ -13,6 +13,8 @@ NÂNG CẤP v2.0:
   - Thêm: chunk_id chuẩn hóa đầy đủ
   - Thêm: Statistics và deduplication
   - Thêm: Export toàn bộ chunks ra JSONL (dùng cho ChromaDB/Qdrant)
+  - v2.1: Tích hợp Regex Refinement (nối từ bị ngắt trang PDF)
+  - v2.1: Context Enrichment (chèn tiêu đề Điều/Khoản vào content)
 """
 
 import os
@@ -153,7 +155,8 @@ METADATA_RULES: dict[str, dict] = {
     },
 
     # ── Thông tư ──────────────────────────────────────────────────────────
-    "tt79_2024_GOC": {
+    # [Đăng ký xe]
+    "tt79_2024_dang_ky_xe_GOC": {
         "doc_id":         "79/2024/TT-BCA",
         "title":          "Thông tư 79/2024/TT-BCA (Đăng ký xe)",
         "issuer":         "Bộ Công an",
@@ -161,7 +164,7 @@ METADATA_RULES: dict[str, dict] = {
         "effective_date": "2025-01-01",
         "topic":          "Đăng ký phương tiện",
     },
-    "tt51_2025": {
+    "tt51_2025_sua_doi_dang_ky_xe": {
         "doc_id":         "51/2025/TT-BCA",
         "title":          "Thông tư 51/2025/TT-BCA (Sửa đổi TT 79/2024)",
         "issuer":         "Bộ Công an",
@@ -169,21 +172,131 @@ METADATA_RULES: dict[str, dict] = {
         "effective_date": "2025-06-01",
         "topic":          "Đăng ký phương tiện",
     },
-    "TT47_2024": {
+    "tt155_2025_le_phi_dang_ky_xe": {
+        "doc_id":         "155/2025/TT-BTC",
+        "title":          "Thông tư 155/2025/TT-BTC (Lệ phí đăng ký xe)",
+        "issuer":         "Bộ Tài chính",
+        "status":         "active",
+        "effective_date": "2025-12-31",
+        "topic":          "Lệ phí",
+    },
+
+    # [Kiểm định xe cơ giới, khí thải]
+    "TT47_Tram_KhiThai_XeMay": {
         "doc_id":         "47/2024/TT-BGTVT",
-        "title":          "Thông tư 47/2024/TT-BGTVT (Kiểm định xe cơ giới)",
+        "title":          "Thông tư 47/2024/TT-BGTVT (Trạm kiểm định khí thải xe máy)",
         "issuer":         "Bộ GTVT",
         "status":         "active",
         "effective_date": "2025-01-01",
         "topic":          "Kiểm định phương tiện",
     },
-    "TT48_2024": {
+    "TT48_2024_BGTVT_QuyChuan_AnToan_KyThuat": {
         "doc_id":         "48/2024/TT-BGTVT",
         "title":          "Thông tư 48/2024/TT-BGTVT (Phân loại lỗi kiểm định)",
         "issuer":         "Bộ GTVT",
         "status":         "active",
         "effective_date": "2025-01-01",
         "topic":          "Kiểm định phương tiện",
+    },
+    "TT30_2024_BGTVT_DangKiem_Oto_DanSu": {
+        "doc_id":         "30/2024/TT-BGTVT",
+        "title":          "Thông tư 30/2024/TT-BGTVT (Đăng kiểm ô tô)",
+        "issuer":         "Bộ GTVT",
+        "status":         "active",
+        "effective_date": "2024-08-12",
+        "topic":          "Kiểm định phương tiện",
+    },
+    "TT46_2024_BGTVT_ThuTuc_KiemDinh_KhiThai_XeMay": {
+        "doc_id":         "46/2024/TT-BGTVT",
+        "title":          "Thông tư 46/2024/TT-BGTVT (Thủ tục kiểm định khí thải xe máy)",
+        "issuer":         "Bộ GTVT",
+        "status":         "active",
+        "effective_date": "2024-11-15",
+        "topic":          "Kiểm định phương tiện",
+    },
+    "TT70_TieuChuan_XeMoi": {
+        "doc_id":         "70/2025/TT-BXD",
+        "title":          "Thông tư 70/2025/TT-BXD (Tiêu chuẩn xe mới)",
+        "issuer":         "Bộ Xây dựng",
+        "status":         "active",
+        "effective_date": "2025-12-31",
+        "topic":          "Tiêu chuẩn",
+    },
+    "TT92_2025_KhiThai_XeMay": {
+        "doc_id":         "92/2025/TT-BNNMT",
+        "title":          "Thông tư 92/2025/TT-BNNMT (Khí thải xe máy)",
+        "issuer":         "Bộ NNPTNT",
+        "status":         "active",
+        "effective_date": "2025-12-31",
+        "topic":          "Khí thải",
+    },
+
+    # [Tuyển sinh, Đào tạo, Sát hạch]
+    "TT12_2017_BGTVT": {
+        "doc_id":         "12/2017/TT-BGTVT",
+        "title":          "Thông tư 12/2017/TT-BGTVT (Đào tạo, sát hạch, cấp GPLX)",
+        "issuer":         "Bộ GTVT",
+        "status":         "active",
+        "effective_date": "2017-04-15",
+        "topic":          "Đào tạo GPLX",
+    },
+    "TT12_2025_BCA_QuyTrinhCap_GPLX": {
+        "doc_id":         "12/2025/TT-BCA",
+        "title":          "Thông tư 12/2025/TT-BCA (Quy trình cấp GPLX)",
+        "issuer":         "Bộ Công an",
+        "status":         "active",
+        "effective_date": "2025-02-28",
+        "topic":          "Đào tạo GPLX",
+    },
+    "TT35_2024_BGTVT_DaoTaoSatHach_GPLX": {
+        "doc_id":         "35/2024/TT-BGTVT",
+        "title":          "Thông tư 35/2024/TT-BGTVT (Đào tạo sát hạch GPLX)",
+        "issuer":         "Bộ GTVT",
+        "status":         "active",
+        "effective_date": "2024-11-15",
+        "topic":          "Đào tạo GPLX",
+    },
+    "TT36_2024_BYT_TieuChuanSucKhoe_LaiXe": {
+        "doc_id":         "36/2024/TT-BYT",
+        "title":          "Thông tư 36/2024/TT-BYT (Tiêu chuẩn sức khỏe lái xe)",
+        "issuer":         "Bộ Y tế",
+        "status":         "active",
+        "effective_date": "2024-11-16",
+        "topic":          "Y tế",
+    },
+
+    # [Tuần tra, Kiểm soát, Thiết bị nghiệp vụ]
+    "TT13_2025_BCA_SuaDoi_TuanTra_GiaoThong": {
+        "doc_id":         "13/2025/TT-BCA",
+        "title":          "Thông tư 13/2025/TT-BCA (Tuần tra, kiểm soát)",
+        "issuer":         "Bộ Công an",
+        "status":         "active",
+        "effective_date": "2025-02-28",
+        "topic":          "Tuần tra",
+    },
+    "TT51_2022_BGTVT_HuongDan_ThietBi": {
+        "doc_id":         "51/2022/TT-BGTVT",
+        "title":          "Thông tư 51/2022/TT-BGTVT (Hướng dẫn thiết bị)",
+        "issuer":         "Bộ GTVT",
+        "status":         "active",
+        "effective_date": "2022-12-30",
+        "topic":          "Thiết bị",
+    },
+    "TT73_2024_BCA_TuanTra_KiemSoat_GOC": {
+        "doc_id":         "73/2024/TT-BCA",
+        "title":          "Thông tư 73/2024/TT-BCA (Tuần tra kiểm soát)",
+        "issuer":         "Bộ Công an",
+        "status":         "active",
+        "effective_date": "2024-11-15",
+        "topic":          "Tuần tra",
+    },
+    "nd135_2021_ChinhPhu_ThietBi_NghiepVu": {
+        "doc_id":         "135/2021/NĐ-CP",
+        "title":          "Nghị định 135/2021/NĐ-CP (Thiết bị nghiệp vụ)",
+        "issuer":         "Chính phủ",
+        "status":         "active",
+        "effective_date": "2021-12-31",
+        "topic":          "Thiết bị nghiệp vụ",
     },
 }
 
@@ -214,6 +327,87 @@ def count_tokens(text: str) -> int:
     """Ước tính số token bằng cách đếm từ (1 từ ≈ 1.3 token cho tiếng Việt)."""
     words = len(text.split())
     return int(words * 1.3)
+
+
+# ---------------------------------------------------------------------------
+# Regex Refinement — Sửa lỗi ngắt dòng do PDF page break
+# ---------------------------------------------------------------------------
+def refine_content(text: str) -> str:
+    """
+    Sửa các lỗi phổ biến khi extract PDF:
+      1. Từ bị ngắt bởi dấu gạch nối cuối dòng + xuống dòng
+      2. Xuống dòng vô nghĩa giữa câu
+      3. Dòng kẻ trang trí, dòng trống liên tiếp
+    """
+    # ── Bảo vệ bảng Markdown: tạm thay thế các dòng bảng bằng placeholder ──
+    table_lines = []
+    lines = text.split('\n')
+    protected = []
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith('|') or (re.match(r'^[-:|]+$', stripped) and '|' in stripped):
+            table_lines.append((i, line))
+            protected.append(f'__TABLE_LINE_{i}__')
+        else:
+            protected.append(line)
+    text = '\n'.join(protected)
+
+    # [TASK 1a] Nối từ bị ngắt: giữ dấu gạch nối, chỉ xóa xuống dòng vô nghĩa
+    text = re.sub(r'(\s*-\s*)\n\s*', r'\1', text)
+
+    # [TASK 1b] Nối dòng bị ngắt giữa câu
+    text = re.sub(
+        r'(?<=[a-zàáạảãắằẳẵặấầẩẫậéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ,;])'
+        r'\n'
+        r'(?=[a-zàáạảãắằẳẵặấầẩẫậéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ])',
+        ' ', text
+    )
+
+    # [TASK 1c] Xóa dòng kẻ trang trí (5+ ký tự ---/===/___ liên tiếp)
+    text = re.sub(r'^[-=_]{5,}\s*$', '', text, flags=re.MULTILINE)
+
+    # [TASK 1d] Gộp dòng trống liên tiếp (>2 dòng → 1 dòng trống)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+
+    # ── Khôi phục dòng bảng Markdown ──
+    lines_out = text.split('\n')
+    for idx, original_line in table_lines:
+        for j, line in enumerate(lines_out):
+            if line.strip() == f'__TABLE_LINE_{idx}__':
+                lines_out[j] = original_line
+                break
+
+    return '\n'.join(lines_out).strip()
+
+# ---------------------------------------------------------------------------
+# Form noise: các keyword chỉ ra biểu mẫu nội bộ (không hữu ích cho RAG)
+# ---------------------------------------------------------------------------
+FORM_NOISE_KEYWORDS = [
+    'sổ theo dõi', 'biên bản phân công', 'báo cáo định kỳ',
+    'sổ giao nhận', 'nhật ký', 'sổ đăng ký',
+    'báo cáo thống kê', 'phiếu xuất kho',
+]
+
+
+# ---------------------------------------------------------------------------
+# Legal Styling: Bold các mức phạt và hành vi vi phạm quan trọng
+# ---------------------------------------------------------------------------
+def apply_legal_styling(text: str) -> str:
+    """Bold các mức phạt tiền và hình thức xử phạt bổ sung quan trọng."""
+    # Bold mức phạt tiền:  "phạt tiền từ X đồng đến Y đồng"
+    text = re.sub(
+        r'(phạt tiền từ\s+[\d.,]+\s+đồng\s+đến\s+[\d.,]+\s+đồng)',
+        r'**\1**', text, flags=re.IGNORECASE
+    )
+    # Bold tước quyền sử dụng GPLX
+    text = re.sub(
+        r'(tước quyền sử dụng[^.;]{5,80}tháng)',
+        r'**\1**', text, flags=re.IGNORECASE
+    )
+    # Tránh bold lồng (** bên trong **)
+    text = re.sub(r'\*{4,}', '**', text)
+    return text
+
 
 # ---------------------------------------------------------------------------
 # Regex phát hiện cấu trúc pháp luật
@@ -394,15 +588,27 @@ class HierarchicalLegalSplitter:
                             )
                             chunks.append(chunk)
 
-        # Deduplication dựa trên content hash
+        # [TASK 3c] Lọc biểu mẫu nhiễu nội bộ + Deduplication
         unique_chunks = []
+        form_noise_removed = 0
         for chunk in chunks:
-            h = hashlib.md5(chunk["content"].encode()).hexdigest()
+            # Kiểm tra biểu mẫu nhiễu nội bộ
+            content_lower = chunk['content'].lower()
+            if any(kw in content_lower for kw in FORM_NOISE_KEYWORDS):
+                form_noise_removed += 1
+                logger.debug(f"Form noise bị loại: {chunk['metadata']['chunk_id']}")
+                continue
+
+            # Deduplication dựa trên content hash
+            h = hashlib.md5(chunk['content'].encode()).hexdigest()
             if h not in seen_hashes:
                 seen_hashes.add(h)
                 unique_chunks.append(chunk)
             else:
                 logger.debug(f"Duplicate chunk bị loại: {chunk['metadata']['chunk_id']}")
+
+        if form_noise_removed:
+            logger.info(f"  → Lọc {form_noise_removed} chunk biểu mẫu nhiễu nội bộ")
 
         return unique_chunks
 
@@ -418,14 +624,26 @@ class HierarchicalLegalSplitter:
         diem_label:  str | None,
         level:       int,
     ) -> dict:
-        """Tạo chunk dict với metadata đầy đủ."""
+        """Tạo chunk dict với metadata đầy đủ + refinement + context enrichment."""
         # Tạo chunk_id chuẩn hóa
         doc_slug   = doc_meta.get("doc_id", source_file).replace("/", "_").replace("-", "_")
         khoan_part = f"_khoan{khoan_num}" if khoan_num else ""
         diem_part  = f"_diem{diem_label}" if diem_label else ""
         chunk_id   = f"{doc_slug}_dieu{dieu_num}{khoan_part}{diem_part}"
 
-        content = text.strip()
+        # ── BƯỚC MỚI v2.1: Regex Refinement — sửa lỗi ngắt dòng PDF ──
+        content = refine_content(text)
+
+        # ── [TASK 4] Legal Styling: Bold mức phạt và hành vi vi phạm ──
+        content = apply_legal_styling(content)
+
+        # ── [TASK 2] Context Enrichment ──
+        ten_van_ban = doc_meta.get("title", source_file)
+        if dieu_num and dieu_num != "0":
+            context_line = f"Văn bản: {ten_van_ban} | Điều {dieu_num}: {dieu_title}"
+            if not content.startswith(context_line):
+                content = f"{context_line}\n{content}"
+
         # Chèn warning vào đầu mỗi chunk nếu văn bản có cảnh báo
         if doc_meta.get("warning") and not content.startswith(">"):
             content = f"> ⚠️ {doc_meta['warning']}\n\n{content}"
@@ -451,7 +669,7 @@ class HierarchicalLegalSplitter:
 
                 # Trường kỹ thuật
                 "source_file":   source_file,
-                "token_estimate": count_tokens(text),
+                "token_estimate": count_tokens(content),
             },
             "content": content,
         }

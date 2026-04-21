@@ -88,6 +88,7 @@ class TrafficHybridRetriever:
         self._statuses: list[str] = []
         self._topics: list[str] = []
         self._doc_ids: list[str] = []
+        self._dieu_to_ids: dict[tuple[str, int], list[int]] = {}
         self._build_bm25_corpus()
 
     # --- public API ---------------------------------------------------------
@@ -102,17 +103,36 @@ class TrafficHybridRetriever:
         Retrieve the top-k most relevant chunks for a query.
 
         filters: optional dict accepting any of:
-          - "status": str (e.g. "active", "all" to disable)
-          - "topic":  str
-          - "doc_id": str
+          - "status":         str (e.g. "active", "all" to disable)
+          - "topic":          str
+          - "doc_id":         str
+          - "exclude_topics": list[str]
+          - "exclude_doc_ids": list[str]
+
+        Auto-rewrite: phrases like "không kinh doanh vận tải" in the query
+        automatically add `Kinh doanh vận tải` to `exclude_topics` so that
+        Nghị định 10/2020/NĐ-CP (business-transport-only scope) does not
+        dominate retrieval when the user explicitly asked about non-business
+        vehicles.
         """
         filters = filters or {}
         status_filter = filters.get("status", "active")
         topic_filter = filters.get("topic")
         doc_id_filter = filters.get("doc_id")
+        exclude_topics = list(filters.get("exclude_topics") or [])
+        exclude_doc_ids = list(filters.get("exclude_doc_ids") or [])
+
+        auto_excluded_topics, auto_excluded_docs = self._auto_exclude_from_query(query)
+        for t in auto_excluded_topics:
+            if t not in exclude_topics:
+                exclude_topics.append(t)
+        for d in auto_excluded_docs:
+            if d not in exclude_doc_ids:
+                exclude_doc_ids.append(d)
 
         qdrant_filter = self._build_qdrant_filter(
-            status_filter, topic_filter, doc_id_filter
+            status_filter, topic_filter, doc_id_filter,
+            exclude_topics, exclude_doc_ids,
         )
 
         query_vector = self.model.encode(query, normalize_embeddings=True).tolist()
@@ -126,7 +146,10 @@ class TrafficHybridRetriever:
 
         q_tokens = self._tokenize_vi(query)
         bm25_scores = self._bm25_index.get_scores(q_tokens)
-        allowed_ids = self._filter_ids(status_filter, topic_filter, doc_id_filter)
+        allowed_ids = self._filter_ids(
+            status_filter, topic_filter, doc_id_filter,
+            exclude_topics, exclude_doc_ids,
+        )
 
         if allowed_ids is None:
             scored = list(enumerate(bm25_scores))
@@ -137,7 +160,23 @@ class TrafficHybridRetriever:
             : self.candidates_per_retriever
         ]
 
-        return self._rrf_fuse(dense_hits, bm25_hits, top_k)
+        fused = self._rrf_fuse(dense_hits, bm25_hits, top_k)
+        return self._attach_siblings(fused, max_neighbors=2)
+
+    @staticmethod
+    def _auto_exclude_from_query(query: str) -> tuple[list[str], list[str]]:
+        """
+        Lightweight query-side rewriter: detect exclusion intent and return
+        (topics_to_exclude, doc_ids_to_exclude). Extend as new patterns emerge.
+        """
+        q = query.lower()
+        topics: list[str] = []
+        docs: list[str] = []
+        if "không kinh doanh vận tải" in q or "không kinh doanh" in q:
+            # NĐ 10/2020 chỉ áp dụng cho xe kinh doanh vận tải.
+            topics.append("Kinh doanh vận tải")
+            docs.append("10/2020/NĐ-CP")
+        return topics, docs
 
     # --- BM25 corpus --------------------------------------------------------
 
@@ -185,6 +224,17 @@ class TrafficHybridRetriever:
                 self._topics.append(meta.get("topic", ""))
                 self._doc_ids.append(meta.get("doc_id", ""))
 
+                did = meta.get("doc_id", "")
+                dieu = meta.get("dieu", 0)
+                try:
+                    dieu_int = int(dieu) if dieu not in (None, "") else 0
+                except (TypeError, ValueError):
+                    dieu_int = 0
+                if did and dieu_int:
+                    self._dieu_to_ids.setdefault((did, dieu_int), []).append(
+                        len(self._payloads) - 1
+                    )
+
         self._bm25_index = BM25Okapi(tokenized)
         logger.info(
             f"BM25 corpus built: {len(tokenized)} docs, {total_tokens} tokens, "
@@ -198,32 +248,50 @@ class TrafficHybridRetriever:
         status_filter: str | None,
         topic_filter: str | None,
         doc_id_filter: str | None,
+        exclude_topics: list[str] | None = None,
+        exclude_doc_ids: list[str] | None = None,
     ) -> Filter | None:
-        conditions = []
+        must = []
+        must_not = []
         if status_filter and status_filter != "all":
-            conditions.append(
+            must.append(
                 FieldCondition(key="status", match=MatchValue(value=status_filter))
             )
         if topic_filter:
-            conditions.append(
+            must.append(
                 FieldCondition(key="topic", match=MatchValue(value=topic_filter))
             )
         if doc_id_filter:
-            conditions.append(
+            must.append(
                 FieldCondition(key="doc_id", match=MatchValue(value=doc_id_filter))
             )
-        return Filter(must=conditions) if conditions else None
+        for t in exclude_topics or []:
+            must_not.append(
+                FieldCondition(key="topic", match=MatchValue(value=t))
+            )
+        for d in exclude_doc_ids or []:
+            must_not.append(
+                FieldCondition(key="doc_id", match=MatchValue(value=d))
+            )
+        if not must and not must_not:
+            return None
+        return Filter(must=must or None, must_not=must_not or None)
 
     def _filter_ids(
         self,
         status_filter: str | None,
         topic_filter: str | None,
         doc_id_filter: str | None,
+        exclude_topics: list[str] | None = None,
+        exclude_doc_ids: list[str] | None = None,
     ) -> set[int] | None:
         status_active = bool(status_filter) and status_filter != "all"
         topic_active = bool(topic_filter)
         doc_active = bool(doc_id_filter)
-        if not (status_active or topic_active or doc_active):
+        excl_topics = set(exclude_topics or [])
+        excl_docs = set(exclude_doc_ids or [])
+        any_active = status_active or topic_active or doc_active or excl_topics or excl_docs
+        if not any_active:
             return None
 
         allowed: set[int] = set()
@@ -235,6 +303,10 @@ class TrafficHybridRetriever:
             if topic_active and tp != topic_filter:
                 continue
             if doc_active and did != doc_id_filter:
+                continue
+            if tp in excl_topics:
+                continue
+            if did in excl_docs:
                 continue
             allowed.add(i)
         return allowed
@@ -267,3 +339,101 @@ class TrafficHybridRetriever:
                 RetrievedChunk(id=pid, score=score, content=content, metadata=metadata)
             )
         return results
+
+    # --- sibling enrichment ------------------------------------------------
+
+    # Specific phrases that only appear in "completion-clause" chunks —
+    # trừ-điểm-GPLX table or xử-phạt-bổ-sung clause. Must avoid patterns
+    # that also occur in the Điều title (every chunk inherits the title as
+    # a prefix, so e.g. "trừ điểm giấy phép" would match every Điều 6/7
+    # chunk and defeat the priority ranking).
+    _SIBLING_PRIORITY_PATTERNS = (
+        "còn bị trừ điểm giấy phép",          # opening of the trừ-điểm table
+        "bị trừ điểm giấy phép lái xe",       # in-table row: "bị trừ ... N điểm"
+        "hình thức xử phạt bổ sung",          # bổ sung clause header
+        "tước quyền sử dụng giấy phép",       # bổ sung detail
+        "tịch thu phương tiện",               # bổ sung detail
+    )
+
+    def _sibling_priority(self, row_idx: int) -> int:
+        """Lower number = higher priority sibling. 0 for completion clauses."""
+        content = (self._payloads[row_idx].get("content") or "").lower()
+        for pat in self._SIBLING_PRIORITY_PATTERNS:
+            if pat in content:
+                return 0
+        return 1
+
+    def _attach_siblings(
+        self, primaries: list[RetrievedChunk], max_neighbors: int = 2
+    ) -> list[RetrievedChunk]:
+        """
+        Two-tier sibling enrichment:
+          (a) Always attach ALL priority-0 "completion clause" chunks for each
+              unique (doc_id, dieu) present in primaries. These are the
+              trừ-điểm-GPLX table and xử-phạt-bổ-sung clauses that complete
+              a penalty answer. Typically 3 chunks per Điều in NĐ 168.
+          (b) For each primary whose khoan is an integer, attach the
+              immediately adjacent Khoản (K-1 and K+1) when available. This
+              handles range-boundary cases — e.g. query ">0,4 mg" falls into
+              K9 while retriever pulled K8 (which contains "0,25-0,4 mg");
+              K9 as neighbor fills the gap.
+
+        Siblings keep score=0.0 and are flagged metadata["is_sibling"]=True.
+        """
+        seen_ids: set[int] = {c.id for c in primaries}
+        enriched: list[RetrievedChunk] = list(primaries)
+
+        def _emit(row_idx: int) -> None:
+            if row_idx in seen_ids:
+                return
+            pl = self._payloads[row_idx]
+            content = pl.get("content", "")
+            metadata = {k: v for k, v in pl.items() if k != "content"}
+            metadata["is_sibling"] = True
+            enriched.append(
+                RetrievedChunk(
+                    id=row_idx, score=0.0, content=content, metadata=metadata
+                )
+            )
+            seen_ids.add(row_idx)
+
+        # Tier (a): attach all completion-clause chunks for each unique Điều.
+        unique_dieu: set[tuple[str, int]] = set()
+        for primary in primaries:
+            did = primary.metadata.get("doc_id", "")
+            dieu = primary.metadata.get("dieu", 0)
+            try:
+                dieu_int = int(dieu) if dieu not in (None, "") else 0
+            except (TypeError, ValueError):
+                dieu_int = 0
+            if did and dieu_int:
+                unique_dieu.add((did, dieu_int))
+
+        for did, dieu_int in unique_dieu:
+            for rid in self._dieu_to_ids.get((did, dieu_int), []):
+                if self._sibling_priority(rid) == 0:
+                    _emit(rid)
+
+        # Tier (b): for each primary Khoản, attach adjacent Khoản (±N).
+        for primary in primaries:
+            did = primary.metadata.get("doc_id", "")
+            dieu = primary.metadata.get("dieu", 0)
+            khoan = primary.metadata.get("khoan")
+            try:
+                dieu_int = int(dieu) if dieu not in (None, "") else 0
+                khoan_int = int(khoan) if khoan not in (None, "") else 0
+            except (TypeError, ValueError):
+                continue
+            if not did or not dieu_int or not khoan_int:
+                continue
+
+            for rid in self._dieu_to_ids.get((did, dieu_int), []):
+                k = self._payloads[rid].get("khoan")
+                try:
+                    k_int = int(k) if k not in (None, "") else 0
+                except (TypeError, ValueError):
+                    continue
+                if k_int and 0 < abs(k_int - khoan_int) <= max_neighbors:
+                    _emit(rid)
+
+        return enriched

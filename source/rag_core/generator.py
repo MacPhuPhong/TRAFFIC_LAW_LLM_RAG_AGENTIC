@@ -31,6 +31,23 @@ QUY TẮC BẮT BUỘC:
 4. Nếu NGỮ CẢNH không chứa đủ thông tin để trả lời, trả lời đúng một câu: "{REFUSAL}"
 5. Không thêm lời dẫn, không mở đầu bằng "Dựa trên tài liệu...", đi thẳng vào câu trả lời.
 6. Nếu có nhiều quy định cùng áp dụng, liệt kê theo thứ tự rõ ràng (1., 2., 3.).
+
+QUY TẮC PHÂN BIỆT NGỮ CẢNH:
+7. Về "kinh doanh vận tải": Ưu tiên chunk có đối tượng khớp với câu hỏi. Nếu câu hỏi rõ ràng về xe KINH DOANH vận tải thì ưu tiên Nghị định 10/2020/NĐ-CP; nếu câu hỏi về cá nhân/hộ gia đình/không kinh doanh thì ưu tiên các chunk khác và chỉ trích dẫn 10/2020/NĐ-CP khi thật sự liên quan.
+8. Về loại phương tiện trong NĐ 168/2024/NĐ-CP: Điều 6 (ô tô), Điều 7 (xe mô tô, xe gắn máy), Điều 8 (xe máy chuyên dùng), Điều 9 (xe đạp, xe thô sơ). Ưu tiên Điều khớp với phương tiện trong câu hỏi; nếu câu hỏi không nêu rõ loại xe, chọn Điều phù hợp nhất và NÊU RÕ loại xe trong câu trả lời.
+9. Một số chunk được đánh dấu "[Ngữ cảnh bổ sung — cùng Điều]": đó là các khoản/điểm cùng Điều với chunk chính, thường chứa thông tin bổ sung như mức phạt tiền hoặc số điểm bị trừ. Được phép dùng các chunk này để hoàn chỉnh câu trả lời (ví dụ: chunk chính có mức phạt, chunk bổ sung có số điểm trừ → ghép lại thành câu trả lời đầy đủ).
+10. CROSS-REFERENCE TRONG NĐ 168/2024/NĐ-CP — BẮT BUỘC khi câu hỏi yêu cầu cả phạt tiền VÀ trừ điểm:
+    - Các Điều 6, 7, 8, 9 có cấu trúc: các Khoản đầu liệt kê mức **phạt tiền** cho từng hành vi (kèm điểm a, b, c...); các Khoản cuối (thường K13–K16) liệt kê **số điểm trừ GPLX** bằng cách tham chiếu ngược tới "điểm X khoản Y Điều này".
+    - QUY TRÌNH 3 BƯỚC khi trả lời:
+      (1) Tìm trong ngữ cảnh chunk có **mức phạt tiền** khớp hành vi → ghi nhận (khoản Y, điểm X).
+      (2) Tìm trong ngữ cảnh chunk có cụm "trừ điểm giấy phép lái xe" → đây là bảng tham chiếu. Kiểm tra bảng có liệt kê (khoản Y, điểm X) không. Nếu có → đọc số điểm trừ tương ứng.
+      (3) Ghép: "Phạt tiền ... đồng + trừ N điểm GPLX".
+    - VÍ DỤ CỤ THỂ: Câu hỏi "vượt đèn đỏ ô tô bị phạt và trừ mấy điểm?".
+      Chunk [Điều 6 Khoản 9]: "Phạt tiền từ 18 đến 20 triệu đồng... c) không chấp hành hiệu lệnh của đèn tín hiệu giao thông" → (Khoản 9, điểm c).
+      Chunk [Điều 6 Khoản 16] (sibling): "b) điểm b, c, d khoản 9 bị trừ 04 điểm GPLX" → (khoản 9 điểm c) khớp → trừ 4 điểm.
+      Trả lời: "Phạt tiền 18.000.000–20.000.000 đồng + trừ 04 điểm GPLX [Điều 6, Khoản 9, Điểm c — NĐ 168/2024/NĐ-CP] [Điều 6, Khoản 16, Điểm b — NĐ 168/2024/NĐ-CP]".
+    - Nếu bảng trừ điểm KHÔNG liệt kê (khoản Y, điểm X) → nói "không bị trừ điểm GPLX", KHÔNG từ chối.
+11. QUAN TRỌNG — KHÔNG được từ chối nếu ngữ cảnh có ÍT NHẤT một phần thông tin liên quan. Nếu tìm được mức phạt tiền nhưng không tìm được số điểm trừ (hoặc ngược lại), trả lời phần tìm được và ghi rõ một câu ngắn về phần thiếu. Chỉ dùng câu từ chối ở Quy tắc 4 khi ngữ cảnh KHÔNG có bất kỳ chunk nào liên quan đến câu hỏi.
 """.replace("{REFUSAL}", REFUSAL_PHRASE)
 
 
@@ -43,6 +60,7 @@ def _format_chunk(i: int, chunk: dict) -> str:
     dieu_title = meta.get("dieu_title", "")
     khoan = meta.get("khoan")
     diem = meta.get("diem")
+    is_sibling = bool(meta.get("is_sibling"))
 
     loc_bits = [f"Điều {dieu}"] if dieu else []
     if khoan:
@@ -51,7 +69,8 @@ def _format_chunk(i: int, chunk: dict) -> str:
         loc_bits.append(f"Điểm {diem}")
     location = " · ".join(loc_bits) if loc_bits else ""
 
-    header = f"[Nguồn {i}] {ten_van_ban} ({doc_id})"
+    tag = "Ngữ cảnh bổ sung — cùng Điều" if is_sibling else f"Nguồn {i}"
+    header = f"[{tag}] {ten_van_ban} ({doc_id})"
     if location:
         header += f" · {location}"
     if dieu_title:
@@ -103,7 +122,7 @@ class LegalAnswerGenerator:
                 raise ValueError(
                     "Google provider requires GOOGLE_API_KEY env var or api_key arg."
                 )
-            self.model_name = model or "gemini-2.5-flash"
+            self.model_name = model or "gemini-1.5-flash"
             self.llm = ChatGoogleGenerativeAI(
                 model=self.model_name,
                 temperature=temperature,
@@ -130,9 +149,7 @@ class LegalAnswerGenerator:
         user_content = (
             f"NGỮ CẢNH:\n{context}\n\n"
             f"CÂU HỎI: {query}\n\n"
-            f"Hãy trả lời dựa CHỈ trên ngữ cảnh trên. "
-            f"Nếu thông tin không có trong ngữ cảnh, trả lời chính xác: "
-            f"\"{REFUSAL_PHRASE}\""
+            f"Hãy trả lời dựa CHỈ trên ngữ cảnh trên, tuân thủ các quy tắc ở hệ thống."
         )
 
         messages = [
@@ -143,7 +160,8 @@ class LegalAnswerGenerator:
         response = self.llm.invoke(messages)
         answer = response.content.strip() if hasattr(response, "content") else str(response)
 
-        refused = REFUSAL_PHRASE in answer and len(answer) < len(REFUSAL_PHRASE) + 20
+        answer_trim = answer.strip().rstrip(".")
+        refused = answer_trim == REFUSAL_PHRASE.rstrip(".")
         sources = self._extract_cited_sources(answer, chunks)
 
         return {
@@ -155,8 +173,20 @@ class LegalAnswerGenerator:
 
     @staticmethod
     def _extract_cited_sources(answer: str, chunks: list[dict]) -> list[dict]:
-        """Return chunk metadata for every doc_id the answer cites."""
-        cited_doc_ids = set(re.findall(r"\(([^()]+/[^()]+)\)", answer))
+        """Return chunk metadata for every doc_id the answer cites.
+
+        Recognises three citation formats the model tends to emit:
+          1. `(168/2024/NĐ-CP)` — parentheses per the prompted format.
+          2. `[168/2024/NĐ-CP]` — square brackets (LLM often substitutes).
+          3. Naked `168/2024/NĐ-CP` inside free text.
+        """
+        bracketed = re.findall(
+            r"[\(\[]\s*([^()\[\]]+?/[^()\[\]]+?)\s*[\)\]]", answer
+        )
+        cited_doc_ids = set(bracketed)
+        for m in re.finditer(r"\b(\d+/\d{4}/[A-ZĐ\-]+)\b", answer):
+            cited_doc_ids.add(m.group(1))
+
         sources = []
         seen = set()
         for c in chunks:

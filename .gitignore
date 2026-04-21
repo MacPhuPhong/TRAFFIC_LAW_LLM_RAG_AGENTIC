@@ -38,3 +38,9 @@ Data/
 !Data/README.md
 **/__pycache__/
 *.log
+
+# LangGraph checkpoints
+checkpoints/
+*.db
+*.sqlite
+*.sqlite3

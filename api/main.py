@@ -181,6 +181,7 @@ def _snapshot_to_response(thread_id: str, snap) -> ChatResponse:
         answer=values.get("answer"),
         sources=values.get("sources", []),
         category=values.get("category"),
+        risk_flag=bool(values.get("risk_flag")),
         requires_approval=False,
         model_info=values.get("model_info"),
         expanded_query=values.get("expanded_query"),
@@ -188,42 +189,54 @@ def _snapshot_to_response(thread_id: str, snap) -> ChatResponse:
     )
 
 
+def _is_paused_on_web_review(snap) -> bool:
+    """Graph pauses at `web_finalize` whenever a web answer needs approval."""
+    return bool(snap and snap.next and "web_finalize" in snap.next)
+
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest):
     thread_id = req.thread_id or str(uuid4())
+    logger.info("CHAT [%s]: %s", thread_id, req.query[:50])
     config = {"configurable": {"thread_id": thread_id}}
     graph = app.state.graph
 
-    await graph.ainvoke({"query": req.query, "raw_query": req.query}, config)
+    await graph.ainvoke(
+        {"query": req.query, "raw_query": req.query},
+        config,
+    )
     snap = await graph.aget_state(config)
 
-    # Hit interrupt_before=["legal_rag"]? decide auto-resume vs pause.
-    if snap and snap.next and "legal_rag" in snap.next:
-        if snap.values.get("requires_approval"):
-            # Don't persist history yet — waiting for human approval.
-            return ChatResponse(
-                thread_id=thread_id,
-                status="pending_approval",
-                category=snap.values.get("category"),
-                requires_approval=True,
-            )
-        # Non-risky: auto-resume past the interrupt.
-        await graph.ainvoke(None, config)
-        snap = await graph.aget_state(config)
+    if _is_paused_on_web_review(snap):
+        logger.info("CHAT [%s]: paused at web_finalize — awaiting human review", thread_id)
+        values = snap.values or {}
+        return ChatResponse(
+            thread_id=thread_id,
+            status="pending_web_review",
+            draft_answer=values.get("draft_answer"),
+            sources=values.get("sources", []),
+            category=values.get("category"),
+            risk_flag=bool(values.get("risk_flag")),
+            requires_approval=True,
+            model_info=values.get("model_info"),
+            expanded_query=values.get("expanded_query"),
+            error=values.get("error"),
+        )
 
     resp = _snapshot_to_response(thread_id, snap)
     await _append_chat_history(graph, config, req.query, resp.answer or "", resp.sources)
     return resp
 
 
-
 @app.post("/resume/{thread_id}", response_model=ChatResponse)
 async def resume(thread_id: str, req: ResumeRequest):
+    logger.info("RESUME [%s]: approved=%s", thread_id, req.approved)
     config = {"configurable": {"thread_id": thread_id}}
     graph = app.state.graph
 
     snap = await graph.aget_state(config)
     if not snap or not snap.next:
+        logger.warning("RESUME [%s]: No pending state found", thread_id)
         raise HTTPException(
             status_code=404,
             detail=f"Thread {thread_id} has no pending interrupt to resume.",
@@ -232,27 +245,36 @@ async def resume(thread_id: str, req: ResumeRequest):
     user_text = snap.values.get("raw_query") or snap.values.get("query") or ""
 
     if not req.approved:
-        rejection_msg = "Yêu cầu đã bị từ chối bởi người phê duyệt."
+        rejection_msg = (
+            "Câu trả lời từ Internet đã bị người phê duyệt từ chối. "
+            "Bạn nên tham khảo trực tiếp văn bản pháp luật hoặc luật sư để được "
+            "tư vấn chính xác."
+        )
         await graph.aupdate_state(
             config,
             {
                 "answer": rejection_msg,
+                "draft_answer": "",
                 "sources": [],
                 "refused": True,
+                "requires_approval": False,
             },
-            as_node="legal_rag",
+            as_node="web_finalize",
         )
         await _append_chat_history(graph, config, user_text, rejection_msg, [])
+        snap = await graph.aget_state(config)
         return ChatResponse(
-
             thread_id=thread_id,
             status="rejected",
             answer=rejection_msg,
             sources=[],
-            category=snap.values.get("category"),
+            category=snap.values.get("category") if snap.values else None,
+            risk_flag=bool(snap.values.get("risk_flag")) if snap.values else False,
             requires_approval=False,
         )
 
+    # Approved — optionally patch draft_answer via override, then let
+    # web_finalize commit draft_answer -> answer.
     if req.override:
         await graph.aupdate_state(config, req.override)
 

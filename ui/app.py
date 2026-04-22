@@ -70,10 +70,13 @@ def _api_chat(query: str, thread_id: str | None) -> dict:
     return r.json()
 
 
-def _api_resume(thread_id: str, approved: bool) -> dict:
+def _api_resume(thread_id: str, approved: bool, override: dict | None = None) -> dict:
+    payload = {"approved": approved}
+    if override:
+        payload["override"] = override
     r = httpx.post(
         f"{API_BASE}/resume/{thread_id}",
-        json={"approved": approved},
+        json=payload,
         timeout=REQUEST_TIMEOUT,
     )
     r.raise_for_status()
@@ -178,15 +181,32 @@ def _render_message(msg: dict) -> None:
 
         if msg.get("pending"):
             st.warning(
-                "⚠️ **Câu hỏi chứa nội dung rủi ro cao — đang chờ phê duyệt của chuyên gia pháp lý.**\n\n"
-                "Nhấn **Duyệt** để tiếp tục hoặc **Từ chối** để huỷ."
+                "🕵️ **Câu trả lời được tổng hợp từ Internet — đang chờ chuyên gia pháp lý duyệt.**\n\n"
+                "Bản nháp bên dưới CHƯA gửi cho người dùng. "
+                "Duyệt để phát hành, Từ chối để thay bằng lời khuyên mặc định, "
+                "hoặc Chỉnh sửa để biên tập trước khi phát hành."
             )
-            col1, col2 = st.columns(2)
+            draft = msg.get("draft_answer") or "_(không có nội dung nháp)_"
+            st.markdown("**📝 Bản nháp (chưa phát hành):**")
+            edit_key = f"edit_{msg['thread_id']}_{msg['idx']}"
+            edited = st.text_area(
+                "Biên tập bản nháp trước khi phát hành (tùy chọn):",
+                value=draft,
+                key=edit_key,
+                height=180,
+                label_visibility="collapsed",
+            )
+            _render_sources(msg.get("sources", []))
+
+            col1, col2, col3 = st.columns(3)
             tid = msg["thread_id"]
             with col1:
                 if st.button("✅ Duyệt", key=f"ok_{tid}_{msg['idx']}", use_container_width=True):
                     try:
-                        result = _api_resume(tid, approved=True)
+                        override = None
+                        if edited.strip() and edited.strip() != draft.strip():
+                            override = {"draft_answer": edited.strip()}
+                        result = _api_resume(tid, approved=True, override=override)
                     except Exception as exc:
                         st.error(f"Resume lỗi: {exc}")
                         return
@@ -201,8 +221,16 @@ def _render_message(msg: dict) -> None:
                         return
                     _finalize_pending(msg["idx"], result)
                     st.rerun()
+            with col3:
+                st.caption("💡 Chỉnh sửa trong ô trên rồi bấm Duyệt để phát hành bản đã sửa.")
             return
 
+        if msg.get("risk_flag"):
+            st.warning(
+                "🛑 Câu hỏi liên quan chế tài nặng (tịch thu / hình sự / tước GPLX). "
+                "Câu trả lời dưới đây trích nguyên văn văn bản pháp luật; "
+                "chỉ mang tính tham khảo, không thay thế tư vấn của luật sư."
+            )
         if msg.get("answer"):
             st.markdown(msg["answer"])
         if msg.get("error"):
@@ -217,6 +245,7 @@ def _finalize_pending(idx: int, result: dict) -> None:
         "answer": result.get("answer"),
         "sources": result.get("sources", []),
         "category": result.get("category") or st.session_state.pending_category,
+        "risk_flag": bool(result.get("risk_flag")),
         "model_info": result.get("model_info"),
         "error": result.get("error"),
         "pending": False,
@@ -252,15 +281,19 @@ def _handle_user_query(query: str) -> None:
     st.session_state.thread_id = resp.get("thread_id", st.session_state.thread_id)
     idx = len(st.session_state.history)
 
-    if resp.get("status") == "pending_approval":
+    if resp.get("status") == "pending_web_review":
         st.session_state.pending_thread = resp["thread_id"]
         st.session_state.pending_category = resp.get("category")
         st.session_state.history.append(
             {
                 "role": "assistant",
                 "pending": True,
+                "draft_answer": resp.get("draft_answer"),
+                "sources": resp.get("sources", []),
                 "thread_id": resp["thread_id"],
                 "category": resp.get("category"),
+                "risk_flag": bool(resp.get("risk_flag")),
+                "model_info": resp.get("model_info"),
                 "idx": idx,
             }
         )
@@ -272,6 +305,7 @@ def _handle_user_query(query: str) -> None:
             "answer": resp.get("answer"),
             "sources": resp.get("sources", []),
             "category": resp.get("category"),
+            "risk_flag": bool(resp.get("risk_flag")),
             "model_info": resp.get("model_info"),
             "error": resp.get("error"),
             "pending": False,

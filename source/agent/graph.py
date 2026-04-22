@@ -3,17 +3,20 @@
 graph.py — Assemble the LangGraph StateGraph.
 
 Flow:
-    START -> contextualize -> router ─┬─> hitl_gate -> query_expansion -> legal_rag ─┬─> END
-                                      │                                               └─> web_search -> END
-                                      ├─> chit_chat    -> END
-                                      ├─> web_search   -> END
-                                      └─> out_of_scope -> END
+    START -> analyzer ─┬─▶ risk_tag -> legal_rag ─┬─▶ END            (trusted corpus)
+                       │                           └─▶ web_search -> web_finalize -> END
+                       ├─▶ chit_chat -> END
+                       ├─▶ web_search -> web_finalize -> END
+                       └─▶ out_of_scope -> END
 
-`interrupt_before=["legal_rag"]` pauses EVERY path entering legal_rag.
-The API layer decides whether to auto-resume (when requires_approval=False)
-or wait for a human (when requires_approval=True). query_expansion runs
-BEFORE the interrupt so the reviewer sees both the original and expanded
-query in the state snapshot.
+HITL design:
+    - `risk_tag` is NON-BLOCKING — it only sets `risk_flag` for a UI warning
+      pill. Local RAG answers cite the official corpus (NĐ 168/2024, Luật ATGT)
+      so they are trusted by default.
+    - `interrupt_before=["web_finalize"]` is the ACTUAL gate: any answer
+      synthesised from open-internet content pauses for human review. The
+      reviewer sees the `draft_answer` + source URLs and approves / rejects
+      before the user ever receives it.
 """
 
 from __future__ import annotations
@@ -26,16 +29,15 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 
 from .nodes import (
-    hitl_gate_node,
     legal_fallback_router,
+    make_analyzer_node,
     make_chit_chat_node,
-    make_contextualize_node,
     make_legal_rag_node,
-    make_query_expansion_node,
-    make_router_node,
     make_web_search_node,
     out_of_scope_node,
+    risk_tag_node,
     route_by_category,
+    web_finalize_node,
 )
 from .state import AgentState
 
@@ -64,50 +66,49 @@ def build_graph(
     Args:
         retriever: TrafficHybridRetriever instance.
         generator: LegalAnswerGenerator instance.
-        llm: LangChain chat model (used by router, chit_chat, web_search synth).
+        llm: LangChain chat model (used by analyzer, chit_chat, web_search synth).
         tavily_tool: TavilySearchTool instance.
         checkpoint_db: Path to SQLite file (used only when `checkpointer` is None).
         checkpointer: Optional pre-built checkpointer. Use `AsyncSqliteSaver`
             for async callers (FastAPI); if None, defaults to a sync `SqliteSaver`
             (good for tests/notebooks).
-        enable_hitl_interrupt: If False, skip interrupt_before (useful for tests).
+        enable_hitl_interrupt: If False, skip `interrupt_before` on `web_finalize`
+            (useful for tests that want end-to-end runs without manual approval).
 
     Returns:
         Compiled LangGraph (supports .invoke / .ainvoke / .get_state / .aget_state).
     """
     workflow = StateGraph(AgentState)
 
-    workflow.add_node("contextualize", make_contextualize_node(llm))
-    workflow.add_node("router", make_router_node(llm))
-    workflow.add_node("hitl_gate", hitl_gate_node)
-    workflow.add_node("query_expansion", make_query_expansion_node(llm))
+    workflow.add_node("analyzer", make_analyzer_node(llm))
+    workflow.add_node("risk_tag", risk_tag_node)
     workflow.add_node("legal_rag", make_legal_rag_node(retriever, generator))
     workflow.add_node("chit_chat", make_chit_chat_node(llm))
     workflow.add_node("out_of_scope", out_of_scope_node)
     workflow.add_node("web_search", make_web_search_node(tavily_tool, llm))
+    workflow.add_node("web_finalize", web_finalize_node)
 
-    workflow.add_edge(START, "contextualize")
-    workflow.add_edge("contextualize", "router")
+    workflow.add_edge(START, "analyzer")
 
     workflow.add_conditional_edges(
-        "router",
+        "analyzer",
         route_by_category,
         {
-            "legal_rag": "hitl_gate",
+            "legal_rag": "risk_tag",
             "chit_chat": "chit_chat",
             "web_legal_search": "web_search",
             "out_of_scope": "out_of_scope",
         },
     )
-    workflow.add_edge("hitl_gate", "query_expansion")
-    workflow.add_edge("query_expansion", "legal_rag")
+    workflow.add_edge("risk_tag", "legal_rag")
     workflow.add_conditional_edges(
         "legal_rag",
         legal_fallback_router,
         {"web_search": "web_search", "end": END},
     )
+    workflow.add_edge("web_search", "web_finalize")
+    workflow.add_edge("web_finalize", END)
     workflow.add_edge("chit_chat", END)
-    workflow.add_edge("web_search", END)
     workflow.add_edge("out_of_scope", END)
 
     if checkpointer is None:
@@ -115,6 +116,6 @@ def build_graph(
 
     compile_kwargs = {"checkpointer": checkpointer}
     if enable_hitl_interrupt:
-        compile_kwargs["interrupt_before"] = ["legal_rag"]
+        compile_kwargs["interrupt_before"] = ["web_finalize"]
 
     return workflow.compile(**compile_kwargs)

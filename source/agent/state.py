@@ -12,17 +12,18 @@ Category = Literal["legal_rag", "chit_chat", "web_legal_search", "out_of_scope"]
 
 class AgentState(TypedDict, total=False):
     query: str
-    history: list[dict]
     raw_query: str
     expanded_query: str
     chat_history: list[dict]
     category: Category
     chunks: list[dict]
     answer: str
+    draft_answer: str
     sources: list[dict]
     refused: bool
     web_results: list[dict]
     warning_prefix: str
+    risk_flag: bool
     requires_approval: bool
     model_info: str
     error: str

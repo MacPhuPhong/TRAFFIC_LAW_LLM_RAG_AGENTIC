@@ -16,12 +16,19 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
 from .router import build_router
-from .state import AgentState
+from .state import AgentState, Category
+
 
 logger = logging.getLogger(__name__)
 
 
-# --- HITL risk detection -----------------------------------------------------
+# --- Soft risk tagging -------------------------------------------------------
+#
+# Risk detection no longer blocks: the legal_rag path trusts the cited corpus
+# (Nghị định 168/2024 + Luật ATGT) to return authoritative answers. Instead,
+# `risk_tag_node` sets a UI-only warning flag so the frontend can display a
+# cautionary pill above the answer. The REAL HITL gate now sits on the web
+# fallback path (see `web_finalize_node`) where content quality is uncertain.
 
 RISK_PATTERNS: tuple[str, ...] = (
     r"tịch thu",
@@ -32,15 +39,15 @@ RISK_PATTERNS: tuple[str, ...] = (
 )
 
 
-def hitl_gate_node(state: AgentState) -> dict:
-    """Passthrough node: flip `requires_approval` when the query contains
-    high-risk keywords. Sits between the router and legal_rag so the
-    StateGraph can `interrupt_before=["legal_rag"]` conditionally."""
+def risk_tag_node(state: AgentState) -> dict:
+    """Tag queries that touch heavy sanctions with `risk_flag=True` so the UI
+    can warn users that the answer involves serious penalties. Non-blocking:
+    the graph continues straight to legal_rag regardless."""
     q = (state.get("query") or "").lower()
-    requires = any(re.search(p, q) for p in RISK_PATTERNS)
-    if requires:
-        logger.info("HITL gate: query flagged for human approval")
-    return {"requires_approval": requires}
+    flagged = any(re.search(p, q) for p in RISK_PATTERNS)
+    if flagged:
+        logger.info("Risk tag: query touches heavy-sanction topics")
+    return {"risk_flag": flagged}
 
 
 # --- Prompts -----------------------------------------------------------------
@@ -68,103 +75,36 @@ OUT_OF_SCOPE_MESSAGE = (
 )
 
 
-CONTEXTUALIZE_SYSTEM_PROMPT = """Bạn là bộ chuẩn hoá câu hỏi trong cuộc hội thoại về
-Luật Giao thông Việt Nam.
+class AnalyzerOutput(BaseModel):
+    """Consolidated output for the pre-processing analyzer."""
+    category: Category = Field(description="Intent category (legal_rag, chit_chat, etc.)")
+    standalone_query: str = Field(description="Self-contained rewrite of the query using history.")
+    expanded_query: str = Field(description="Formal legal terminology expansion for retrieval.")
 
-Nhiệm vụ: đọc lịch sử hội thoại + câu hỏi mới nhất của người dùng, sau đó viết
-lại câu hỏi thành MỘT câu HOÀN CHỈNH, ĐỘC LẬP — người đọc không cần xem lịch
-sử cũng hiểu được đầy đủ bối cảnh.
+ANALYZER_SYSTEM_PROMPT = """Bạn là chuyên gia phân tích truy vấn Luật Giao thông Việt Nam.
+Nhiệm vụ: Chấp nhận lịch sử hội thoại + câu hỏi mới, thực hiện 3 bước trong 1:
 
-QUY TẮC:
-1. Nếu câu mới đã độc lập (không dùng đại từ, tham chiếu, hoặc tiếp nối), giữ nguyên.
-2. Nếu câu mới phụ thuộc ngữ cảnh ("cái đó", "vậy", "nếu", "thế còn", "tiếp", các câu ngắn mô tả hành động tiếp theo), hãy gộp ngữ cảnh vào để thành câu đầy đủ.
-3. KHÔNG thêm giả định user chưa nói (không tự thêm loại xe/tình huống mới).
-4. Đầu ra là 1 câu duy nhất, tiếng Việt, không giải thích, không bullet.
+1. PHÂN LOẠI (Category):
+   - 'legal_rag': Hỏi về luật, mức phạt, đăng kiểm, đăng ký xe...
+   - 'chit_chat': Xã giao, xin chào...
+   - 'web_legal_search': Hỏi về luật nước ngoài hoặc tin tức quốc tế/quá mới.
+   - 'out_of_scope': Không liên quan giao thông.
 
-VÍ DỤ 1:
-Lịch sử:
-  user: "vượt đèn đỏ xe máy bị phạt bao nhiêu?"
-  assistant: "Phạt từ 4–6 triệu đồng, trừ 4 điểm GPLX."
-  user: "nếu gây tai nạn thì sao"
-→ "nếu vượt đèn đỏ bằng xe máy mà gây tai nạn thì bị xử phạt thế nào"
+2. CHUẨN HOÁ (Standalone):
+   - Viết lại câu hỏi thành câu ĐỘC LẬP dựa trên lịch sử.
+   - Ví dụ: "Còn ô tô thì sao?" -> "Mức phạt vượt đèn đỏ đối với xe ô tô là bao nhiêu?"
 
-VÍ DỤ 2:
-Lịch sử:
-  user: "vượt đèn đỏ gây tai nạn thì bị gì?"
-  assistant: "..."
-  user: "đã lỡ bỏ chạy rồi"
-→ "gây tai nạn giao thông rồi bỏ chạy khỏi hiện trường bị xử phạt như thế nào"
-
-VÍ DỤ 3 (đã độc lập):
-Lịch sử: (có vài lượt)
-  user: "chu kỳ đăng kiểm ô tô dưới 9 chỗ là bao lâu?"
-→ "chu kỳ đăng kiểm ô tô dưới 9 chỗ là bao lâu?"
-"""
-
-
-class ContextualizedQuery(BaseModel):
-    """Self-contained rewrite of the latest user question."""
-
-    standalone: str = Field(
-        description="Câu hỏi mới đã được viết lại thành câu hoàn chỉnh, độc lập, 1 câu duy nhất."
-    )
-
-
-QUERY_EXPANSION_SYSTEM_PROMPT = """Bạn là chuyên gia thuật ngữ pháp lý giao thông Việt Nam.
-Nhiệm vụ: viết lại câu hỏi người dùng thành truy vấn dùng thuật ngữ chuẩn
-trong Luật Trật tự, An toàn giao thông đường bộ và các Nghị định 168/2024,
-100/2019, 46/2016.
+3. MỞ RỘNG (Expanded):
+   - Dịch sang thuật ngữ chuyên môn (Nghị định 168/2024, Luật 2024).
+   - "vượt đèn đỏ" -> "không chấp hành hiệu lệnh đèn tín hiệu giao thông".
 
 QUY TẮC:
-1. Giữ nguyên ý định và đối tượng (xe máy/ô tô/người đi bộ) mà user đề cập.
-2. Thay từ ngữ dân dã bằng thuật ngữ pháp lý chuẩn.
-3. Nếu câu hỏi đã dùng thuật ngữ chuẩn, trả về gần như nguyên văn.
-4. KHÔNG thêm thông tin user chưa cung cấp (không tự thêm "xe máy" nếu user chỉ nói "vượt đèn đỏ").
-5. Đầu ra là 1 câu truy vấn duy nhất, không giải thích, không bullet.
-
-VÍ DỤ:
-- "vượt đèn đỏ xe máy phạt bao nhiêu?"
-  → "mức xử phạt hành vi không chấp hành hiệu lệnh đèn tín hiệu giao thông đối với xe mô tô, xe gắn máy"
-- "nhậu rồi lái xe bị gì?"
-  → "xử phạt điều khiển phương tiện giao thông khi trong máu hoặc hơi thở có nồng độ cồn"
-- "không đội mũ bảo hiểm"
-  → "xử phạt hành vi không đội mũ bảo hiểm khi tham gia giao thông"
-- "bị tịch thu xe khi nào?"
-  → "các trường hợp bị tịch thu phương tiện theo quy định giao thông đường bộ"
-- "Xử phạt hành vi vượt đèn đỏ đối với xe máy là gì?"
-  → "Xử phạt hành vi không chấp hành hiệu lệnh đèn tín hiệu giao thông đối với xe mô tô, xe gắn máy"
+- Trả về JSON theo đúng định dạng yêu cầu.
+- Giữ nguyên đối tượng (ô tô/xe máy) user đề cập.
 """
-
-
-class ExpandedQuery(BaseModel):
-    """Structured output for query expansion node."""
-
-    expanded: str = Field(
-        description=(
-            "Truy vấn đã viết lại bằng thuật ngữ pháp lý chuẩn, 1 câu duy nhất, "
-            "không giải thích."
-        )
-    )
 
 
 # --- Node factories ----------------------------------------------------------
-
-
-def make_router_node(llm) -> Callable[[AgentState], dict]:
-    classify = build_router(llm)
-
-    def router_node(state: AgentState) -> dict:
-        category = classify(state["query"])
-        logger.info("Router: %s -> %s", state.get("query", "")[:60], category)
-        return {"category": category}
-
-    return router_node
-
-
-def route_by_category(state: AgentState) -> str:
-    """Edge condition after router_node."""
-    return state.get("category", "out_of_scope")
-
 
 CONTEXTUALIZE_HISTORY_TURNS = 6
 
@@ -195,87 +135,48 @@ def _format_history_for_prompt(history: list[dict]) -> str:
     return "\n".join(lines) if lines else "(chưa có)"
 
 
+def make_analyzer_node(llm) -> Callable[[AgentState], dict]:
 
-def make_contextualize_node(llm) -> Callable[[AgentState], dict]:
-    """Rewrite the latest user question into a self-contained one using prior
-    conversation history (if any). Runs BEFORE the router so follow-ups like
-    "đã lỡ bỏ chạy rồi" get enriched with context from the previous turn
-    ("gây tai nạn") before routing/expansion/retrieval.
-
-    For the first turn (no history) this is a no-op. On LLM failure we keep
-    the original query — worst case we regress to the pre-memory baseline.
+    """Targeted optimization: consolidates Contextualize, Router, and Expansion
+    into one LLM call to solve API timeout issues.
     """
+    structured = llm.with_structured_output(AnalyzerOutput)
 
-    structured = llm.with_structured_output(ContextualizedQuery)
-
-    def contextualize_node(state: AgentState) -> dict:
+    def analyzer_node(state: AgentState) -> dict:
         raw = state.get("query", "")
         history = state.get("chat_history") or []
-
-        if not history:
-            return {"raw_query": raw}
-
         history_text = _format_history_for_prompt(history)
+
         try:
-            result: ContextualizedQuery = structured.invoke(
+            result: AnalyzerOutput = structured.invoke(
                 [
-                    SystemMessage(content=CONTEXTUALIZE_SYSTEM_PROMPT),
-                    HumanMessage(
-                        content=(
-                            f"Lịch sử hội thoại:\n{history_text}\n\n"
-                            f"Câu hỏi mới: {raw}"
-                        )
-                    ),
+                    SystemMessage(content=ANALYZER_SYSTEM_PROMPT),
+                    HumanMessage(content=f"Lịch sử hội thoại:\n{history_text}\n\nCâu hỏi mới nhất: {raw}"),
                 ]
             )
-            rewritten = (result.standalone or "").strip()
+            return {
+                "category": result.category,
+                "query": result.standalone_query,
+                "expanded_query": result.expanded_query,
+                "raw_query": raw,
+            }
         except Exception as exc:
-            logger.warning("Contextualize failed (%s); using raw query", exc)
-            return {"raw_query": raw}
+            logger.error("Analyzer failed (%s); falling back to raw defaults", exc)
+            return {
+                "category": "legal_rag", 
+                "query": raw, 
+                "expanded_query": raw, 
+                "raw_query": raw
+            }
 
-        if rewritten and rewritten != raw:
-            logger.info("Contextualize: %r -> %r", raw, rewritten)
-            return {"query": rewritten, "raw_query": raw}
-        return {"raw_query": raw}
-
-    return contextualize_node
+    return analyzer_node
 
 
-def make_query_expansion_node(llm) -> Callable[[AgentState], dict]:
-    """Rewrite colloquial Vietnamese queries into formal legal terminology so
-    the BM25/dense retriever can hit the corpus chunks, which use statutory
-    wording (e.g. "không chấp hành hiệu lệnh đèn tín hiệu" vs. the user's
-    "vượt đèn đỏ"). Expansion is used ONLY for retrieval; the generator still
-    sees the original query so the answer sounds natural to the user.
+def route_by_category(state: AgentState) -> str:
+    """Edge condition after analyzer_node."""
+    return state.get("category", "out_of_scope")
 
-    If the LLM call fails, fall back to the original query rather than break
-    the flow — retrieval with the original string is still the existing
-    pre-expansion baseline.
-    """
 
-    structured = llm.with_structured_output(ExpandedQuery)
-
-    def query_expansion_node(state: AgentState) -> dict:
-        query = state["query"]
-        try:
-            result: ExpandedQuery = structured.invoke(
-                [
-                    SystemMessage(content=QUERY_EXPANSION_SYSTEM_PROMPT),
-                    HumanMessage(content=f"Câu hỏi người dùng: {query}"),
-                ]
-            )
-            expanded = (result.expanded or "").strip()
-            if not expanded:
-                expanded = query
-        except Exception as exc:
-            logger.warning("Query expansion failed (%s); using original query", exc)
-            expanded = query
-
-        if expanded != query:
-            logger.info("Query expansion: %r -> %r", query, expanded)
-        return {"expanded_query": expanded}
-
-    return query_expansion_node
 
 
 def make_legal_rag_node(retriever, generator) -> Callable[[AgentState], dict]:
@@ -400,9 +301,21 @@ def _build_web_search_query(state: AgentState) -> str:
     return f"{WEB_SEARCH_LEGAL_PREFIX}: {base}"
 
 
+WEB_WARNING_PREFIX = "⚠️ Lưu ý: Thông tin tra cứu từ Internet mở, hãy cẩn trọng."
+
+
 def make_web_search_node(tavily_tool, llm) -> Callable[[AgentState], dict]:
+    """Produce a DRAFT answer (stored as `draft_answer`, not `answer`).
+
+    The graph will then pause at `web_finalize` so a human reviewer can
+    approve/edit/reject the draft before it becomes the final `answer` shown
+    to the user. Does NOT overwrite `category` — the router's original decision
+    (legal_rag vs web_legal_search) is preserved so the UI can distinguish
+    "planned web search" vs "fell back from RAG".
+    """
+
     def web_search_node(state: AgentState) -> dict:
-        original_query = state.get("query", "")
+        original_query = state.get("raw_query") or state.get("query", "")
         search_query = _build_web_search_query(state)
         logger.info("Web search query: %r", search_query)
         try:
@@ -410,15 +323,13 @@ def make_web_search_node(tavily_tool, llm) -> Callable[[AgentState], dict]:
         except Exception as exc:
             logger.exception("Tavily search failed: %s", exc)
             return {
-                "answer": (
-                    "⚠️ Lưu ý: Thông tin tra cứu từ Internet mở, hãy cẩn trọng.\n"
+                "draft_answer": (
+                    f"{WEB_WARNING_PREFIX}\n"
                     "Xin lỗi, không có thông tin online xác thực (dịch vụ tìm kiếm lỗi)."
                 ),
                 "sources": [],
                 "web_results": [],
-                "warning_prefix": (
-                    "⚠️ Lưu ý: Thông tin tra cứu từ Internet mở, hãy cẩn trọng."
-                ),
+                "warning_prefix": WEB_WARNING_PREFIX,
                 "refused": False,
                 "error": f"tavily_error: {exc}",
             }
@@ -427,16 +338,14 @@ def make_web_search_node(tavily_tool, llm) -> Callable[[AgentState], dict]:
 
         if not results:
             return {
-                "answer": (
-                    "⚠️ Lưu ý: Thông tin tra cứu từ Internet mở, hãy cẩn trọng.\n"
+                "draft_answer": (
+                    f"{WEB_WARNING_PREFIX}\n"
                     "Xin lỗi, không có thông tin online xác thực về chủ đề này "
                     "trên các nguồn luật Việt Nam."
                 ),
                 "sources": [],
                 "web_results": [],
-                "warning_prefix": (
-                    "⚠️ Lưu ý: Thông tin tra cứu từ Internet mở, hãy cẩn trọng."
-                ),
+                "warning_prefix": WEB_WARNING_PREFIX,
                 "refused": False,
             }
 
@@ -457,11 +366,11 @@ def make_web_search_node(tavily_tool, llm) -> Callable[[AgentState], dict]:
                     ),
                 ]
             )
-            answer = synth.content.strip() if hasattr(synth, "content") else str(synth)
+            draft = synth.content.strip() if hasattr(synth, "content") else str(synth)
         except Exception as exc:
             logger.exception("Web-search synth LLM call failed: %s", exc)
-            answer = (
-                "⚠️ Lưu ý: Thông tin tra cứu từ Internet mở, hãy cẩn trọng.\n"
+            draft = (
+                f"{WEB_WARNING_PREFIX}\n"
                 "Xin lỗi, không tổng hợp được kết quả online lúc này."
             )
 
@@ -472,14 +381,27 @@ def make_web_search_node(tavily_tool, llm) -> Callable[[AgentState], dict]:
         ]
 
         return {
-            "answer": answer,
+            "draft_answer": draft,
             "sources": sources,
             "web_results": results,
-            "warning_prefix": (
-                "⚠️ Lưu ý: Thông tin tra cứu từ Internet mở, hãy cẩn trọng."
-            ),
+            "warning_prefix": WEB_WARNING_PREFIX,
             "refused": False,
-            "category": "web_legal_search",
+            "requires_approval": True,
         }
 
     return web_search_node
+
+
+def web_finalize_node(state: AgentState) -> dict:
+    """Commit the reviewed draft as the final answer.
+
+    The graph is compiled with `interrupt_before=["web_finalize"]`, so this
+    node only runs AFTER a human reviewer has resumed the thread (either
+    approving the draft as-is or supplying an override via /resume).
+    Moves `draft_answer` -> `answer` and clears `requires_approval`.
+    """
+    draft = state.get("draft_answer") or state.get("answer") or ""
+    return {
+        "answer": draft,
+        "requires_approval": False,
+    }

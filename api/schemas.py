@@ -16,12 +16,29 @@ class ChatRequest(BaseModel):
     )
 
 
+ChatStatus = Literal[
+    "completed",
+    "pending_web_review",
+    "rejected",
+]
+
+
 class ChatResponse(BaseModel):
     thread_id: str
-    status: Literal["completed", "pending_approval", "rejected"]
+    status: ChatStatus
     answer: str | None = None
+    draft_answer: str | None = Field(
+        None,
+        description="Populated when status=pending_web_review — the synthesised web answer "
+        "waiting for human approval before being shown to the user.",
+    )
     sources: list[dict[str, Any]] = Field(default_factory=list)
     category: str | None = None
+    risk_flag: bool = Field(
+        False,
+        description="Soft warning — query touches heavy sanctions (tịch thu, hình sự, …). "
+        "Answer still produced; UI should show a caution pill.",
+    )
     requires_approval: bool = False
     model_info: str | None = None
     expanded_query: str | None = None
@@ -32,7 +49,8 @@ class ResumeRequest(BaseModel):
     approved: bool = Field(..., description="True to continue, False to reject")
     override: dict[str, Any] | None = Field(
         None,
-        description="Optional partial-state dict to patch before resuming",
+        description="Optional partial-state dict to patch before resuming. "
+        "Useful for editing `draft_answer` before approval.",
     )
 
 

@@ -42,88 +42,81 @@ st.markdown(
     /* Google Fonts */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Outfit:wght@400;700&display=swap');
 
+    /* Global Typography */
     html, body, [class*="css"] {
         font-family: 'Inter', sans-serif;
     }
-
     h1, h2, h3 {
         font-family: 'Outfit', sans-serif;
         font-weight: 700;
         letter-spacing: -0.02em;
     }
 
-    /* Main App Background */
-    .stApp {
-        background-color: #0e1117;
+    /* Core Container Styling - TO FIX WHITE BORDERS */
+    .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"], [data-testid="stToolbar"] {
+        background-color: #0c0d10 !important;
     }
+    
+    header {visibility: hidden;}
+    footer {visibility: hidden;}
 
-    /* Glass Sidebar */
+    /* Sidebar Styling */
     section[data-testid="stSidebar"] {
-        background: rgba(17, 25, 40, 0.75) !important;
-        backdrop-filter: blur(12px) saturate(180%);
-        border-right: 1px solid rgba(255, 255, 255, 0.1);
+        background: #0f1115 !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.05);
     }
 
-    /* Chat Input Styling */
-    .stChatInputContainer {
-        padding-bottom: 20px;
-    }
-
-    /* Custom Message Container */
+    /* Message Bubbles - Minimalist Editorial Style */
     .message-container {
         padding: 1.2rem;
         border-radius: 12px;
         margin-bottom: 1rem;
         border: 1px solid rgba(255, 255, 255, 0.05);
+        line-height: 1.6;
     }
-
     .user-msg {
-        background: rgba(255, 255, 255, 0.03);
+        background: rgba(255, 255, 255, 0.04);
+        color: #e0e0e0;
     }
-
     .assistant-msg {
-        background: rgba(94, 106, 210, 0.05);
-        border-left: 4px solid #5e6ad2;
+        background: rgba(94, 106, 210, 0.06);
+        border-left: 3px solid #5e6ad2;
+        color: #ffffff;
     }
 
-    /* Sources Glass Cards */
+    /* Source Cards */
     .source-card {
-        background: rgba(255, 255, 255, 0.05);
-        backdrop-filter: blur(4px);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.07);
         border-radius: 8px;
-        padding: 8px 12px;
-        margin-top: 6px;
-        transition: all 0.2s ease;
+        padding: 10px 14px;
+        margin-top: 8px;
+        font-size: 0.9rem;
     }
     .source-card:hover {
-        background: rgba(255, 255, 255, 0.08);
-        border-color: rgba(94, 106, 210, 0.4);
+        background: rgba(255, 255, 255, 0.06);
+        border-color: #5e6ad2;
     }
 
-    /* Status Pills */
+    /* UI Pill Elements */
     .status-pill {
         display: inline-block;
-        padding: 2px 10px;
-        border-radius: 20px;
-        font-size: 0.8rem;
+        padding: 2px 12px;
+        border-radius: 100px;
+        font-size: 0.75rem;
         font-weight: 600;
-        margin-right: 8px;
-        background: rgba(94, 106, 210, 0.2);
-        color: #8c9eff;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        background: rgba(94, 106, 210, 0.15);
+        color: #9ea9ff;
         border: 1px solid rgba(94, 106, 210, 0.3);
+        margin-bottom: 8px;
     }
     
-    .stWarning {
-        background: rgba(255, 152, 0, 0.1) !important;
-        border: 1px solid rgba(255, 152, 0, 0.2) !important;
-        color: #ff9800 !important;
-        border-radius: 10px;
-    }
-    
-    .stSuccess {
-        background: rgba(76, 175, 80, 0.1) !important;
-        border: 1px solid rgba(76, 175, 80, 0.2) !important;
+    /* Input Box */
+    .stChatInputContainer {
+        border-top: 1px solid rgba(255, 255, 255, 0.05);
+        padding-top: 10px;
     }
     </style>
     """,

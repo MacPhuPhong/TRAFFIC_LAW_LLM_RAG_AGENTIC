@@ -257,8 +257,8 @@ def make_legal_rag_node(retriever, generator) -> Callable[[AgentState], dict]:
         refs = _extract_legal_references(
             state.get("raw_query", ""), query, retrieval_query
         )
+        seen_ids = {c.id for c in chunks}
         if refs:
-            seen_ids = {c.id for c in chunks}
             added = 0
             for ref in refs:
                 try:
@@ -276,6 +276,48 @@ def make_legal_rag_node(retriever, generator) -> Callable[[AgentState], dict]:
                     chunks.append(c)
                     added += 1
             logger.info("Reference-pass added %d chunks (refs=%s)", added, refs)
+
+        # --- Cross-reference resolution pass (v5.7) --------------------------
+        # Retrieved chunks often contain cross-references like:
+        #   "hành vi quy định tại điểm a khoản 4 Điều 13"
+        # The LLM cannot explain these unless we resolve them.  Scan the
+        # content of ALL current chunks and pull in the referenced articles
+        # so the generator has full context to describe violations.
+        chunk_texts = " ".join(c.content for c in chunks if hasattr(c, "content"))
+        xrefs = _extract_legal_references(chunk_texts)
+        if xrefs:
+            xref_added = 0
+            # Only dieu-level refs that are NOT already in our chunks' articles
+            present_dieus = {
+                (c.metadata.get("doc_id", DEFAULT_REF_DOC_ID),
+                 c.metadata.get("dieu"))
+                for c in chunks if hasattr(c, "metadata")
+            }
+            for ref in xrefs:
+                # Skip if we already have chunks from that exact article
+                ref_key = (ref["doc_id"], ref["dieu"])
+                if ref_key in present_dieus:
+                    continue
+                try:
+                    extra = retriever.get_chunks_by_location(
+                        doc_id=ref["doc_id"], dieu=ref["dieu"],
+                        khoan=ref.get("khoan"), diem=ref.get("diem"),
+                    )
+                except Exception as exc:
+                    logger.warning("xref-pass failed for %s: %s", ref, exc)
+                    continue
+                for c in extra:
+                    if c.id in seen_ids:
+                        continue
+                    seen_ids.add(c.id)
+                    chunks.append(c)
+                    xref_added += 1
+                # Safety cap: don't bloat context beyond usefulness
+                if xref_added >= 30:
+                    break
+            if xref_added:
+                logger.info("Cross-ref pass added %d chunks (xrefs=%d found)",
+                            xref_added, len(xrefs))
 
         chunk_dicts = [c.to_dict() for c in chunks]
         if not chunk_dicts:

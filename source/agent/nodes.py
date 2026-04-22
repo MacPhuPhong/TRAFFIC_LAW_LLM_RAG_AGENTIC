@@ -68,6 +68,7 @@ Nhiệm vụ: Chấp nhận lịch sử hội thoại + câu hỏi mới, thực
 
 3. MỞ RỘNG (Expanded):
    - Chuyển đổi ngôn ngữ dân dã sang thuật ngữ chuyên môn pháp lý Việt Nam.
+   - GIỮ NGUYÊN MỌI INTENT: nếu câu hỏi có nhiều ý (ví dụ "khi nào áp dụng" + "có những hạng nào"), expanded_query PHẢI bao gồm thuật ngữ tra cứu cho TẤT CẢ các ý, KHÔNG được gộp/lược bỏ ý phụ.
    - CHIẾN LƯỢC MỞ RỘNG TỔNG QUÁT:
      * Với câu hỏi 'Mức phạt/Bị gì': Mở rộng thành "{Hành vi} + mức xử phạt + Nghị định 168/2024".
      * Với câu hỏi 'Khi nào/Trường hợp nào': Mở rộng thành "{Chủ đề} + các hành vi vi phạm + hình thức xử phạt bổ sung + biện pháp khắc phục hậu quả".
@@ -171,10 +172,18 @@ BROAD_QUERY_PATTERNS: tuple[str, ...] = (
     r"\bcác hành vi\b",
     r"\bdanh sách\b",
     r"\bđiều kiện\b",
+    r"\bhạng nào\b",
+    r"\bcác hạng\b",
+    r"\bnhững hạng\b",
+    r"\bcác loại\b",
+    r"\bnhững loại\b",
+    r"\bcó mấy\b",
+    r"\bgồm những gì\b",
+    r"\bbao gồm\b",
 )
 
-LEGAL_RAG_TOP_K_DEFAULT = 10
-LEGAL_RAG_TOP_K_BROAD = 20
+LEGAL_RAG_TOP_K_DEFAULT = 15
+LEGAL_RAG_TOP_K_BROAD = 25
 
 
 def _is_broad_query(*texts: str) -> bool:

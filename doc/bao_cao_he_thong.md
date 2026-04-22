@@ -1,7 +1,8 @@
 # BÁO CÁO KỸ THUẬT HỆ THỐNG
+
 # Agentic RAG — Trợ lý Pháp lý Giao thông Việt Nam
 
-> **Phiên bản:** v5.6 Final · **Ngày:** 22/04/2026
+> **Phiên bản:** v5.8.1 Final · **Ngày:** 23/04/2026
 > **Công nghệ lõi:** LangGraph · Qdrant · Sentence-BERT (PhoBERT) · Google Gemini · FastAPI · Streamlit
 > **Repository:** [MacPhuPhong/TRAFFIC_LAW_LLM_RAG_AGENTIC](https://github.com/MacPhuPhong/TRAFFIC_LAW_LLM_RAG_AGENTIC)
 
@@ -19,6 +20,7 @@
 8. [Giai đoạn 7 — Deployment & API](#8-giai-đoạn-7--deployment--api)
 9. [Phụ lục A — Tổng kết kỹ thuật](#phụ-lục-a--tổng-kết-kỹ-thuật)
 10. [Phụ lục B — Changelog v5.5 → v5.6](#phụ-lục-b--changelog-v55--v56)
+11. [Phụ lục C — Changelog v5.6 → v5.8.1](#phụ-lục-c--changelog-v56--v581)
 
 ---
 
@@ -59,40 +61,40 @@ graph TD
 
 ### 1.2 Bảng công nghệ sử dụng
 
-| Lớp | Thành phần | Công nghệ / Thư viện | Vai trò |
-|---|---|---|---|
-| Ingestion | PDF extraction | `pdfplumber` | Trích text + bảng (bbox-aware) |
-| Ingestion | Cleaning | `regex` + `unicodedata` (NFC) | Khử nhiễu, chuẩn hoá |
-| Chunking | Splitter | [HierarchicalLegalSplitter](traffic_rag/source/ingestion/semantic_chunker.py) | 3-tier: Điều → Khoản → Điểm |
-| Embedding | Encoder | `KeepItReal/vietnamese-sbert` (PhoBERT-based SBERT) | 768-d sentence embedding |
-| Vector DB | Storage | `Qdrant` (Docker, gRPC :6334) | Cosine search + payload filter |
-| Lexical | Sparse | `rank_bm25.BM25Okapi` | In-memory BM25 index |
-| Fusion | Ranker | Reciprocal Rank Fusion (RRF, k=60) | Kết hợp dense + sparse |
-| Reference resolution | Structural pass | Regex `_REF_DIEU/_REF_KHOAN/_REF_DIEM` | Lookup Điều/Khoản/Điểm đích danh |
-| LLM | Analyzer + Generator | Google **Gemini 3.1 Flash Lite Preview** (via `langchain-google-genai`) | Phân loại, chuẩn hoá, mở rộng, sinh trả lời |
-| Agent | Orchestration | `LangGraph` `StateGraph` | Đồ thị trạng thái có điều kiện |
-| Checkpoint | Memory | `AsyncSqliteSaver` | Lưu chat_history + HITL resume |
-| Fallback | Web search | `Tavily API` (hạn chế domain VN) | Tra cứu khi corpus không có |
-| API | Backend | `FastAPI` + `uvicorn` | REST async, 4 endpoint |
-| UI | Frontend | `Streamlit` | Chat + HITL review form |
-| Container | Packaging | `docker-compose` | Qdrant + app |
+| Lớp                  | Thành phần           | Công nghệ / Thư viện                                                          | Vai trò                                     |
+| -------------------- | -------------------- | ----------------------------------------------------------------------------- | ------------------------------------------- |
+| Ingestion            | PDF extraction       | `pdfplumber`                                                                  | Trích text + bảng (bbox-aware)              |
+| Ingestion            | Cleaning             | `regex` + `unicodedata` (NFC)                                                 | Khử nhiễu, chuẩn hoá                        |
+| Chunking             | Splitter             | [HierarchicalLegalSplitter](traffic_rag/source/ingestion/semantic_chunker.py) | 3-tier: Điều → Khoản → Điểm                 |
+| Embedding            | Encoder              | `KeepItReal/vietnamese-sbert` (PhoBERT-based SBERT)                           | 768-d sentence embedding                    |
+| Vector DB            | Storage              | `Qdrant` (Docker, gRPC :6334)                                                 | Cosine search + payload filter              |
+| Lexical              | Sparse               | `rank_bm25.BM25Okapi`                                                         | In-memory BM25 index                        |
+| Fusion               | Ranker               | Reciprocal Rank Fusion (RRF, k=60)                                            | Kết hợp dense + sparse                      |
+| Reference resolution | Structural pass      | Regex `_REF_DIEU/_REF_KHOAN/_REF_DIEM`                                        | Lookup Điều/Khoản/Điểm đích danh            |
+| LLM                  | Analyzer + Generator | Google **Gemini 3.1 Flash Lite Preview** (via `langchain-google-genai`)       | Phân loại, chuẩn hoá, mở rộng, sinh trả lời |
+| Agent                | Orchestration        | `LangGraph` `StateGraph`                                                      | Đồ thị trạng thái có điều kiện              |
+| Checkpoint           | Memory               | `AsyncSqliteSaver`                                                            | Lưu chat_history + HITL resume              |
+| Fallback             | Web search           | `Tavily API` (hạn chế domain VN)                                              | Tra cứu khi corpus không có                 |
+| API                  | Backend              | `FastAPI` + `uvicorn`                                                         | REST async, 4 endpoint                      |
+| UI                   | Frontend             | `Streamlit`                                                                   | Chat + HITL review form                     |
+| Container            | Packaging            | `docker-compose`                                                              | Qdrant + app                                |
 
 ### 1.3 Các chỉ số cốt lõi
 
-| Chỉ số | Giá trị | Nguồn |
-|---|---|---|
-| Tổng văn bản pháp luật | 20+ (Luật/NĐ/TT) | Thủ công curate |
-| Tổng chunks sau xử lý | **2.705** | Log uvicorn `BM25 corpus built: 2705 docs` |
-| Tổng token corpus | 424.677 | `BM25 corpus built: ... 424677 tokens` |
-| Embedding dim | 768 | vietnamese-sbert |
-| Qdrant collection | `traffic_law_v2` | [retriever.py:32](traffic_rag/source/rag_core/retriever.py#L32) |
-| `top_k` default | **10** | [nodes.py:176](traffic_rag/source/agent/nodes.py#L176) |
-| `top_k` broad queries | **20** | [nodes.py:177](traffic_rag/source/agent/nodes.py#L177) |
-| `candidates_per_retriever` | 30 | [retriever.py:72](traffic_rag/source/rag_core/retriever.py#L72) |
-| RRF constant `k` | 60 | [retriever.py:71](traffic_rag/source/rag_core/retriever.py#L71) |
-| Sibling `max_neighbors` | 2 (±2 Khoản) | [retriever.py:164](traffic_rag/source/rag_core/retriever.py#L164) |
-| Generator temperature | 0.1 | [retriever & generator default](traffic_rag/source/rag_core/generator.py#L101) |
-| HITL gate | `interrupt_before=["web_finalize"]` | [graph.py:115](traffic_rag/source/agent/graph.py#L115) |
+| Chỉ số                     | Giá trị                             | Nguồn                                                                          |
+| -------------------------- | ----------------------------------- | ------------------------------------------------------------------------------ |
+| Tổng văn bản pháp luật     | 20+ (Luật/NĐ/TT)                    | Thủ công curate                                                                |
+| Tổng chunks sau xử lý      | **2.705**                           | Log uvicorn `BM25 corpus built: 2705 docs`                                     |
+| Tổng token corpus          | 424.677                             | `BM25 corpus built: ... 424677 tokens`                                         |
+| Embedding dim              | 768                                 | vietnamese-sbert                                                               |
+| Qdrant collection          | `traffic_law_v2`                    | [retriever.py:32](traffic_rag/source/rag_core/retriever.py#L32)                |
+| `top_k` default            | **10**                              | [nodes.py:176](traffic_rag/source/agent/nodes.py#L176)                         |
+| `top_k` broad queries      | **20**                              | [nodes.py:177](traffic_rag/source/agent/nodes.py#L177)                         |
+| `candidates_per_retriever` | 30                                  | [retriever.py:72](traffic_rag/source/rag_core/retriever.py#L72)                |
+| RRF constant `k`           | 60                                  | [retriever.py:71](traffic_rag/source/rag_core/retriever.py#L71)                |
+| Sibling `max_neighbors`    | 2 (±2 Khoản)                        | [retriever.py:164](traffic_rag/source/rag_core/retriever.py#L164)              |
+| Generator temperature      | 0.1                                 | [retriever & generator default](traffic_rag/source/rag_core/generator.py#L101) |
+| HITL gate                  | `interrupt_before=["web_finalize"]` | [graph.py:115](traffic_rag/source/agent/graph.py#L115)                         |
 
 ---
 
@@ -109,11 +111,11 @@ Data/cleaned/{luat,nghidinh,thongtu}/*.md
 
 Ba script làm sạch chuyên biệt cho 3 loại văn bản:
 
-| Script | Đối tượng | Quy ước đặt tên |
-|---|---|---|
-| [clean_luat_pdfs.py](traffic_rag/source/ingestion/clean_luat_pdfs.py) | Luật (QH) | Luật 35, 36, 23… |
-| [clean_nghidinh_pdfs.py](traffic_rag/source/ingestion/clean_nghidinh_pdfs.py) | Nghị định (CP) | NĐ 168, 336, 100, 123… |
-| [clean_thongtu_pdfs.py](traffic_rag/source/ingestion/clean_thongtu_pdfs.py) | Thông tư (BCA/BGTVT/BTC) | TT 79, 51, 30, 46… |
+| Script                                                                        | Đối tượng                | Quy ước đặt tên        |
+| ----------------------------------------------------------------------------- | ------------------------ | ---------------------- |
+| [clean_luat_pdfs.py](traffic_rag/source/ingestion/clean_luat_pdfs.py)         | Luật (QH)                | Luật 35, 36, 23…       |
+| [clean_nghidinh_pdfs.py](traffic_rag/source/ingestion/clean_nghidinh_pdfs.py) | Nghị định (CP)           | NĐ 168, 336, 100, 123… |
+| [clean_thongtu_pdfs.py](traffic_rag/source/ingestion/clean_thongtu_pdfs.py)   | Thông tư (BCA/BGTVT/BTC) | TT 79, 51, 30, 46…     |
 
 ### 2.2 Năm bước xử lý chi tiết
 
@@ -156,6 +158,7 @@ RE_PAGE_NUM     = r"^(Trang\s+)?\d+(\s*/\s*\d+)?$"
 **Bước 3 — Nối dòng thông minh (line merging)**
 
 Chỉ nối khi đồng thời thoả 3 điều kiện:
+
 1. Dòng trước kết thúc bằng chữ cái / dấu phẩy / chấm phẩy (regex `RE_MERGE_END`).
 2. Dòng sau bắt đầu bằng chữ thường.
 3. Dòng sau **không** phải heading (Điều/Khoản/Chương).
@@ -196,18 +199,18 @@ Kèm tuỳ chọn `annotate_diem_tru=True` bôi đậm số điểm trừ GPLX t
 
 ### 2.3 Danh sách văn bản pháp luật đã thu thập
 
-| STT | Văn bản | Mã số | Trạng thái |
-|---|---|---|---|
-| 1 | Luật Đường bộ 2024 | 35/2024/QH15 | ✅ Hiệu lực |
-| 2 | Luật Trật tự ATGT 2024 | 36/2024/QH15 | ✅ Hiệu lực |
-| 3 | NĐ Xử phạt VPHC đường bộ | **168/2024/NĐ-CP** | ✅ Hiệu lực (văn bản trụ cột) |
-| 4 | NĐ Xử phạt vận tải | 336/2025/NĐ-CP | ✅ Hiệu lực |
-| 5 | NĐ Kinh doanh vận tải | 10/2020/NĐ-CP | ✅ Hiệu lực |
-| 6 | TT Đăng ký xe | 79/2024/TT-BCA | ✅ Hiệu lực |
-| 7 | TT Sửa đổi đăng ký xe | 51/2025/TT-BCA | ✅ Hiệu lực |
-| 8 | TT Đăng kiểm ô tô | 30/2024/TT-BGTVT | ✅ Hiệu lực |
-| 9 | TT Đào tạo sát hạch GPLX | 35/2024/TT-BGTVT | ✅ Hiệu lực |
-| 10+ | …và 10+ văn bản khác (NĐ 123, TT 46, TT 47…) | | |
+| STT | Văn bản                                      | Mã số              | Trạng thái                    |
+| --- | -------------------------------------------- | ------------------ | ----------------------------- |
+| 1   | Luật Đường bộ 2024                           | 35/2024/QH15       | ✅ Hiệu lực                   |
+| 2   | Luật Trật tự ATGT 2024                       | 36/2024/QH15       | ✅ Hiệu lực                   |
+| 3   | NĐ Xử phạt VPHC đường bộ                     | **168/2024/NĐ-CP** | ✅ Hiệu lực (văn bản trụ cột) |
+| 4   | NĐ Xử phạt vận tải                           | 336/2025/NĐ-CP     | ✅ Hiệu lực                   |
+| 5   | NĐ Kinh doanh vận tải                        | 10/2020/NĐ-CP      | ✅ Hiệu lực                   |
+| 6   | TT Đăng ký xe                                | 79/2024/TT-BCA     | ✅ Hiệu lực                   |
+| 7   | TT Sửa đổi đăng ký xe                        | 51/2025/TT-BCA     | ✅ Hiệu lực                   |
+| 8   | TT Đăng kiểm ô tô                            | 30/2024/TT-BGTVT   | ✅ Hiệu lực                   |
+| 9   | TT Đào tạo sát hạch GPLX                     | 35/2024/TT-BGTVT   | ✅ Hiệu lực                   |
+| 10+ | …và 10+ văn bản khác (NĐ 123, TT 46, TT 47…) |                    |                               |
 
 ---
 
@@ -249,11 +252,11 @@ Lookahead `(?=\s+[A-ZÀ-Ỹ])` tránh false-positive với số ngẫu nhiên tr
 
 ### 3.3 Ngưỡng split (thresholds)
 
-| Tham số | Giá trị | Ý nghĩa |
-|---|---|---|
-| `THRESH_DIEU` | 600 token | Điều > 600 token → split xuống Khoản |
-| `THRESH_KHOAN` | 500 token | Khoản > 500 token → split xuống Điểm |
-| `MIN_CHUNK` | 30 token | Chunk < 30 token → drop (quá ngắn, vô nghĩa về mặt retrieval) |
+| Tham số        | Giá trị   | Ý nghĩa                                                       |
+| -------------- | --------- | ------------------------------------------------------------- |
+| `THRESH_DIEU`  | 600 token | Điều > 600 token → split xuống Khoản                          |
+| `THRESH_KHOAN` | 500 token | Khoản > 500 token → split xuống Điểm                          |
+| `MIN_CHUNK`    | 30 token  | Chunk < 30 token → drop (quá ngắn, vô nghĩa về mặt retrieval) |
 
 ### 3.4 Ước lượng token tiếng Việt
 
@@ -269,6 +272,7 @@ def count_tokens(text: str) -> int:
 ### 3.5 Post-processing
 
 **Regex Refinement — sửa lỗi ngắt dòng từ PDF:**
+
 ```python
 def refine_content(text):
     text = re.sub(r'(\s*-\s*)\n\s*', r'\1', text)              # từ bị gạch nối ngắt dòng
@@ -278,6 +282,7 @@ def refine_content(text):
 ```
 
 **Legal Styling — bold thông tin quan trọng:**
+
 ```python
 "phạt tiền từ 18.000.000 đồng đến 20.000.000 đồng"
   → "**phạt tiền từ 18.000.000 đồng đến 20.000.000 đồng**"
@@ -289,6 +294,7 @@ def refine_content(text):
 Bold không ảnh hưởng đến BM25 (tokenizer lọc dấu câu/markdown), nhưng giúp LLM đọc dễ hơn và trích dẫn chính xác hơn trong prompt context.
 
 **Context Enrichment — chèn ngữ cảnh vào đầu chunk:**
+
 ```python
 content = f"Văn bản: {ten_van_ban} | Điều {dieu}: {dieu_title}\n{content}"
 
@@ -312,20 +318,20 @@ if h not in seen_hashes:
 Mỗi chunk gắn metadata đầy đủ — được Qdrant dùng làm payload filter và retriever dùng cho sibling enrichment + cross-reference lookup:
 
 ```yaml
-chunk_id:        "168_2024_ND_CP_dieu6_khoan9_diemc"
-doc_id:          "168/2024/NĐ-CP"
-ten_van_ban:     "Nghị định 168/2024/NĐ-CP (Xử phạt VPHC đường bộ)"
-issuer:          "Chính phủ"
-document_type:   "nghidinh"
-status:          "active"
-effective_date:  "2025-01-01"
-topic:           "Xử phạt vi phạm giao thông"
-dieu:            6
-dieu_title:      "Xử phạt ô tô"
-khoan:           9
-diem:            "c"
-level:           3
-token_estimate:  245
+chunk_id: "168_2024_ND_CP_dieu6_khoan9_diemc"
+doc_id: "168/2024/NĐ-CP"
+ten_van_ban: "Nghị định 168/2024/NĐ-CP (Xử phạt VPHC đường bộ)"
+issuer: "Chính phủ"
+document_type: "nghidinh"
+status: "active"
+effective_date: "2025-01-01"
+topic: "Xử phạt vi phạm giao thông"
+dieu: 6
+dieu_title: "Xử phạt ô tô"
+khoan: 9
+diem: "c"
+level: 3
+token_estimate: 245
 ```
 
 ### 3.8 Output
@@ -480,6 +486,7 @@ dense_hits = client.search(
 $$\text{BM25}(D,Q) = \sum_{i=1}^{n}\text{IDF}(q_i)\cdot\frac{f(q_i,D)(k_1+1)}{f(q_i,D) + k_1\left(1 - b + b\cdot\frac{|D|}{\text{avgdl}}\right)}$$
 
 với:
+
 - $f(q_i,D)$: tần suất term $q_i$ trong document $D$
 - $|D|$: số token trong $D$; $\text{avgdl}$: độ dài trung bình toàn corpus
 - $k_1 = 1.5$, $b = 0.75$ (mặc định của `rank_bm25`)
@@ -521,11 +528,11 @@ def _rrf_fuse(self, dense_hits, bm25_hits, top_k):
 
 **Ví dụ tính toán:**
 
-| Doc | Dense rank | BM25 rank | RRF score |
-|---|---|---|---|
-| Chunk A | 1 | 3 | 1/61 + 1/63 ≈ 0.03226 |
-| Chunk B | 5 | 1 | 1/65 + 1/61 ≈ 0.03177 |
-| Chunk C | 2 | — | 1/62 ≈ 0.01613 |
+| Doc     | Dense rank | BM25 rank | RRF score             |
+| ------- | ---------- | --------- | --------------------- |
+| Chunk A | 1          | 3         | 1/61 + 1/63 ≈ 0.03226 |
+| Chunk B | 5          | 1         | 1/65 + 1/61 ≈ 0.03177 |
+| Chunk C | 2          | —         | 1/62 ≈ 0.01613        |
 
 → Chunk A xếp đầu vì xuất hiện ở **cả hai** retriever với rank tốt.
 
@@ -630,6 +637,7 @@ if refs:
 ```
 
 **Ví dụ quan sát trên production log:**
+
 ```
 INFO:source.agent.nodes:Reference-pass added 9 chunks
 (refs=[{'doc_id':'168/2024/NĐ-CP','dieu':32,'khoan':'14','diem':'h'},
@@ -669,7 +677,7 @@ RetrievedChunks → _format_chunk → _build_context → [SystemPrompt + UserPro
 1. Trả lời **hoàn toàn** bằng tiếng Việt.
 2. Chỉ dùng thông tin trong `NGỮ CẢNH`; **không** kiến thức ngoài, **không** suy đoán.
 3. Trích dẫn `[Điều X, Khoản Y — {ten_van_ban} ({doc_id})]` sau mỗi khẳng định.
-4. Không đủ ngữ cảnh → trả lời đúng 1 câu: *"Thông tin này không có trong tài liệu được cung cấp."*
+4. Không đủ ngữ cảnh → trả lời đúng 1 câu: _"Thông tin này không có trong tài liệu được cung cấp."_
 5. Không lời dẫn ("Dựa trên tài liệu…") — đi thẳng câu trả lời.
 6. **[Cập nhật v5.6]** ĐỊNH DẠNG LIỆT KÊ Markdown nghiêm ngặt:
    - Mỗi mục chính một dòng `1. … 2. … 3. …`.
@@ -681,10 +689,10 @@ RetrievedChunks → _format_chunk → _build_context → [SystemPrompt + UserPro
 9. Chunk `[Ngữ cảnh bổ sung — cùng Điều]` (sibling) được phép dùng để hoàn chỉnh trả lời.
 10. **CROSS-REFERENCE** trong NĐ 168 (quy trình 3 bước khi câu hỏi cần cả phạt tiền + trừ điểm):
     1. Tìm chunk có **mức phạt tiền** khớp hành vi → ghi (K, điểm).
-    2. Tìm chunk có *"trừ điểm giấy phép lái xe"* → tra bảng xem (K, điểm) có được liệt kê, đọc số điểm trừ.
-    3. Ghép: *"Phạt tiền … + trừ N điểm GPLX"*.
+    2. Tìm chunk có _"trừ điểm giấy phép lái xe"_ → tra bảng xem (K, điểm) có được liệt kê, đọc số điểm trừ.
+    3. Ghép: _"Phạt tiền … + trừ N điểm GPLX"_.
 11. **Không từ chối** nếu có ÍT NHẤT một phần thông tin liên quan. Chỉ dùng câu từ chối của Quy tắc 4 khi ngữ cảnh hoàn toàn không có chunk nào liên quan.
-12. **Tổng hợp**: với câu hỏi liệt kê (*"Khi nào…"*, *"Các hành vi…"*), rà soát TOÀN BỘ ngữ cảnh để tổng hợp đầy đủ nhất.
+12. **Tổng hợp**: với câu hỏi liệt kê (_"Khi nào…"_, _"Các hành vi…"_), rà soát TOÀN BỘ ngữ cảnh để tổng hợp đầy đủ nhất.
 
 > [!NOTE]
 > Quy tắc 10 và sibling tier (a) phối hợp khép kín: retriever đảm bảo bảng trừ điểm luôn có trong context cùng Điều, prompt hướng dẫn LLM 3 bước ghép.
@@ -713,7 +721,7 @@ bracketed = re.findall(r"[\(\[]\s*([^()\[\]]+?/[^()\[\]]+?)\s*[\)\]]", answer)
 naked     = re.finditer(r"\b(\d+/\d{4}/[A-ZÀ-Ỹ\-]+)\b", answer)
 ```
 
-Sources được đối chiếu ngược với chunk metadata để bổ sung `Điều/Khoản/Điểm` → UI hiển thị *"Điều 6 · Khoản 9 — NĐ 168/2024"*.
+Sources được đối chiếu ngược với chunk metadata để bổ sung `Điều/Khoản/Điểm` → UI hiển thị _"Điều 6 · Khoản 9 — NĐ 168/2024"_.
 
 ---
 
@@ -776,14 +784,15 @@ File: [nodes.py](traffic_rag/source/agent/nodes.py)
 Một LLM call duy nhất trả về Pydantic `AnalyzerOutput(category, standalone_query, expanded_query)` — trước đây là 3 call tuần tự, giờ gộp để tránh timeout.
 
 **System prompt tóm tắt:**
-- **Phân loại** 4 lớp: `legal_rag` / `chit_chat` / `web_legal_search` / `out_of_scope`. Bắt buộc `out_of_scope` nếu không có từ khoá giao thông.
-- **Chuẩn hoá** thành câu độc lập dựa trên history (giải quyết tham chiếu: *"Còn ô tô thì sao?"* → *"Mức phạt vượt đèn đỏ đối với xe ô tô là bao nhiêu?"*).
-- **Mở rộng** ngôn ngữ dân dã → thuật ngữ chuyên môn. Chiến lược:
-  - *"Mức phạt/Bị gì"* → `{hành vi} + mức xử phạt + Nghị định 168/2024`
-  - *"Khi nào/Trường hợp nào"* → `{chủ đề} + các hành vi + xử phạt bổ sung + biện pháp khắc phục hậu quả`
-  - *"Thủ tục/Đâu"* → `{thủ tục} + trình tự + thẩm quyền + hồ sơ`
 
-Lịch sử được format kèm **sources đã trích dẫn ở turn trước** → LLM giải được tham chiếu kiểu *"Nguồn số 3 nói gì?"*:
+- **Phân loại** 4 lớp: `legal_rag` / `chit_chat` / `web_legal_search` / `out_of_scope`. Bắt buộc `out_of_scope` nếu không có từ khoá giao thông.
+- **Chuẩn hoá** thành câu độc lập dựa trên history (giải quyết tham chiếu: _"Còn ô tô thì sao?"_ → _"Mức phạt vượt đèn đỏ đối với xe ô tô là bao nhiêu?"_).
+- **Mở rộng** ngôn ngữ dân dã → thuật ngữ chuyên môn. Chiến lược:
+  - _"Mức phạt/Bị gì"_ → `{hành vi} + mức xử phạt + Nghị định 168/2024`
+  - _"Khi nào/Trường hợp nào"_ → `{chủ đề} + các hành vi + xử phạt bổ sung + biện pháp khắc phục hậu quả`
+  - _"Thủ tục/Đâu"_ → `{thủ tục} + trình tự + thẩm quyền + hồ sơ`
+
+Lịch sử được format kèm **sources đã trích dẫn ở turn trước** → LLM giải được tham chiếu kiểu _"Nguồn số 3 nói gì?"_:
 
 ```python
 lines.append(f"    (Nguồn đã trích dẫn: [1] Điều 32 · Khoản 14 · NĐ 168/2024, [2] …)")
@@ -799,7 +808,8 @@ def route_by_category(state):
 #### Node 3 — Legal RAG
 
 Ba bước:
-1. `top_k = 20 if _is_broad_query() else 10` — câu hỏi *"Khi nào / Các trường hợp / Liệt kê…"* cần recall rộng hơn.
+
+1. `top_k = 20 if _is_broad_query() else 10` — câu hỏi _"Khi nào / Các trường hợp / Liệt kê…"_ cần recall rộng hơn.
 2. `retriever.get_relevant_chunks(retrieval_query, top_k)` → hybrid + sibling.
 3. **Cross-reference pass** — parse `raw_query + query + retrieval_query` cho pattern Điều/Khoản/Điểm, `retriever.get_chunks_by_location(...)`, merge non-duplicate.
 4. `generator.generate(query, chunks)` → `{answer, sources, refused}`.
@@ -882,14 +892,15 @@ graph = workflow.compile(
 
 File: [api/main.py](traffic_rag/api/main.py)
 
-| Method | Path | Chức năng |
-|---|---|---|
-| `POST` | `/chat` | Gửi câu hỏi mới (tự tạo `thread_id` nếu thiếu) |
-| `POST` | `/resume/{thread_id}` | Duyệt / Từ chối / Sửa bản nháp web |
-| `GET`  | `/pending/{thread_id}` | Inspect snapshot của thread (debug) |
-| `GET`  | `/health` | Liveness probe |
+| Method | Path                   | Chức năng                                      |
+| ------ | ---------------------- | ---------------------------------------------- |
+| `POST` | `/chat`                | Gửi câu hỏi mới (tự tạo `thread_id` nếu thiếu) |
+| `POST` | `/resume/{thread_id}`  | Duyệt / Từ chối / Sửa bản nháp web             |
+| `GET`  | `/pending/{thread_id}` | Inspect snapshot của thread (debug)            |
+| `GET`  | `/health`              | Liveness probe                                 |
 
 **`ChatResponse` (Pydantic):**
+
 ```python
 class ChatResponse(BaseModel):
     thread_id: str
@@ -921,7 +932,7 @@ async def _append_chat_history(graph, config, user_text, assistant_text, sources
     await graph.aupdate_state(config, {"chat_history": history})
 ```
 
-Sources được lưu vào history → analyzer ở turn sau resolve được tham chiếu *"Nguồn số 3 nói gì?"*.
+Sources được lưu vào history → analyzer ở turn sau resolve được tham chiếu _"Nguồn số 3 nói gì?"_.
 
 ### 8.2 Lifespan
 
@@ -948,7 +959,7 @@ services:
   qdrant:
     image: qdrant/qdrant:latest
     ports:
-      - "6334:6333"                   # map gRPC :6333 container → :6334 host
+      - "6334:6333" # map gRPC :6333 container → :6334 host
     volumes:
       - ./qdrant_storage:/qdrant/storage
 
@@ -960,14 +971,14 @@ services:
     depends_on: [qdrant]
 ```
 
-### 8.4 Streamlit Frontend
+### 8.4 Streamlit frontend
 
 File: [ui/app.py](traffic_rag/ui/app.py)
 
 - Chat interface (`st.chat_message`) + nhãn category (📘 Luật VN · 💬 Chit-chat · 🌐 Web · 🚫 Out-of-scope).
 - HITL review form khi `status=pending_web_review`: hiển thị `draft_answer` trong `st.text_area` → 3 nút **Duyệt / Từ chối / Sửa-rồi-Duyệt**.
 - Nguồn trích dẫn gom trong `st.expander` cuối message.
-- Thread id quản lý qua sidebar (nút *"Bắt đầu cuộc hội thoại mới"* sinh UUID4 mới).
+- Thread id quản lý qua sidebar (nút _"Bắt đầu cuộc hội thoại mới"_ sinh UUID4 mới).
 
 ### 8.5 Quy trình triển khai đầy đủ
 
@@ -1011,37 +1022,37 @@ API_KEY=...                                             # alias cũ, auto-map �
 
 ## Phụ lục A — Tổng kết kỹ thuật
 
-| Chỉ số | Giá trị |
-|---|---|
-| Tổng văn bản pháp luật | 20+ (Luật/NĐ/TT) |
-| Tổng chunks sau xử lý | **2.705** |
-| Tổng token corpus (BM25) | 424.677 |
-| Embedding dimension | 768 |
-| Retrieval top-k | 10 (default) / 20 (broad query) |
-| Candidates per retriever | 30 |
-| RRF `k` | 60 |
-| Sibling `max_neighbors` | 2 (±2 Khoản) |
-| Cross-reference doc_id mặc định | `168/2024/NĐ-CP` |
-| Generator temperature | 0.1 |
-| Generator max tokens | 1024 |
-| Chat history cap | 20 messages (~10 turns) |
-| HITL gate | `interrupt_before=["web_finalize"]` |
-| Checkpointer | `AsyncSqliteSaver` |
-| Whitelisted Tavily domains | 12 trang luật VN uy tín |
+| Chỉ số                           | Giá trị                                  |
+| -------------------------------- | ---------------------------------------- |
+| Tổng văn bản pháp luật           | 20+ (Luật/NĐ/TT)                         |
+| Tổng chunks sau xử lý            | **2.705**                                |
+| Tổng token corpus (BM25)         | 424.677                                  |
+| Embedding dimension              | 768                                      |
+| Retrieval top-k                  | 10 (default) / 20 (broad query)          |
+| Candidates per retriever         | 30                                       |
+| RRF `k`                          | 60                                       |
+| Sibling `max_neighbors`          | 2 (±2 Khoản)                             |
+| Cross-reference doc_id mặc định  | `168/2024/NĐ-CP`                         |
+| Generator temperature            | 0.1                                      |
+| Generator max tokens             | 1024                                     |
+| Chat history cap                 | 20 messages (~10 turns)                  |
+| HITL gate                        | `interrupt_before=["web_finalize"]`      |
+| Checkpointer                     | `AsyncSqliteSaver`                       |
+| Whitelisted Tavily domains       | 12 trang luật VN uy tín                  |
 | Hierarchical chunking thresholds | Điều ≤ 600 / Khoản ≤ 500 / min 30 tokens |
 
 ### Pipeline so sánh thời gian (tham khảo, CPU-only)
 
-| Giai đoạn | Thời gian điển hình |
-|---|---|
+| Giai đoạn                                       | Thời gian điển hình |
+| ----------------------------------------------- | ------------------- |
 | Retriever init (SBERT load + BM25 corpus build) | ~10–15 s cold start |
-| `_tokenize_vi` + BM25 score (2705 docs) | ~50 ms |
-| Qdrant dense search (top-30) | ~30 ms |
-| RRF fuse + sibling enrich | ~5 ms |
-| Cross-reference pass (regex + dict lookup) | < 1 ms |
-| Analyzer LLM call (Gemini Flash Lite) | ~1.5–2.5 s |
-| Generator LLM call | ~2–4 s |
-| **Tổng round-trip `/chat`** | **~4–7 s** |
+| `_tokenize_vi` + BM25 score (2705 docs)         | ~50 ms              |
+| Qdrant dense search (top-30)                    | ~30 ms              |
+| RRF fuse + sibling enrich                       | ~5 ms               |
+| Cross-reference pass (regex + dict lookup)      | < 1 ms              |
+| Analyzer LLM call (Gemini Flash Lite)           | ~1.5–2.5 s          |
+| Generator LLM call                              | ~2–4 s              |
+| **Tổng round-trip `/chat`**                     | **~4–7 s**          |
 
 ---
 
@@ -1049,29 +1060,29 @@ API_KEY=...                                             # alias cũ, auto-map �
 
 ### B.1 Bỏ hoàn toàn cơ chế `risk_flag` (breaking)
 
-**Lý do:** sau khi HITL được đặt đúng chỗ (chỉ chặn `web_finalize`), câu trả lời RAG từ corpus đã pháp điển hoá (NĐ 168/2024) là **đáng tin mặc định** — banner đỏ *"🛑 Câu hỏi liên quan chế tài nặng…"* vừa gây cảm giác câu trả lời kém tin cậy, vừa noise UX cho từ khoá tra cứu phổ biến (tịch thu, tước GPLX, tạm giữ…). Risk-tag không có giá trị analytics (không ghi metric riêng) → xoá hẳn thay vì soft-hide.
+**Lý do:** sau khi HITL được đặt đúng chỗ (chỉ chặn `web_finalize`), câu trả lời RAG từ corpus đã pháp điển hoá (NĐ 168/2024) là **đáng tin mặc định** — banner đỏ _"🛑 Câu hỏi liên quan chế tài nặng…"_ vừa gây cảm giác câu trả lời kém tin cậy, vừa noise UX cho từ khoá tra cứu phổ biến (tịch thu, tước GPLX, tạm giữ…). Risk-tag không có giá trị analytics (không ghi metric riêng) → xoá hẳn thay vì soft-hide.
 
 **Scope đã rip end-to-end:**
 
-| File | Thay đổi |
-|---|---|
-| [source/agent/nodes.py](traffic_rag/source/agent/nodes.py) | Xoá `RISK_PATTERNS`, `risk_tag_node` |
-| [source/agent/graph.py](traffic_rag/source/agent/graph.py) | Xoá node `risk_tag`, xoá edge tương ứng; rút gọn flow |
-| [source/agent/state.py](traffic_rag/source/agent/state.py) | Xoá field `risk_flag: bool` |
-| [api/schemas.py](traffic_rag/api/schemas.py) | Xoá `risk_flag` khỏi `ChatResponse` |
-| [api/main.py](traffic_rag/api/main.py) | Xoá `risk_flag=bool(...)` trong 3 chỗ tạo `ChatResponse` |
-| [ui/app.py](traffic_rag/ui/app.py) | Xoá `st.warning("🛑 …")` + 3 lần ghi `risk_flag` vào history dict |
+| File                                                       | Thay đổi                                                          |
+| ---------------------------------------------------------- | ----------------------------------------------------------------- |
+| [source/agent/nodes.py](traffic_rag/source/agent/nodes.py) | Xoá `RISK_PATTERNS`, `risk_tag_node`                              |
+| [source/agent/graph.py](traffic_rag/source/agent/graph.py) | Xoá node `risk_tag`, xoá edge tương ứng; rút gọn flow             |
+| [source/agent/state.py](traffic_rag/source/agent/state.py) | Xoá field `risk_flag: bool`                                       |
+| [api/schemas.py](traffic_rag/api/schemas.py)               | Xoá `risk_flag` khỏi `ChatResponse`                               |
+| [api/main.py](traffic_rag/api/main.py)                     | Xoá `risk_flag=bool(...)` trong 3 chỗ tạo `ChatResponse`          |
+| [ui/app.py](traffic_rag/ui/app.py)                         | Xoá `st.warning("🛑 …")` + 3 lần ghi `risk_flag` vào history dict |
 
 ### B.2 Thêm Cross-Reference Retrieval (feature)
 
-**Vấn đề:** câu hỏi dạng *"điểm h khoản 14 Điều 32 NĐ 168 là gì"* bị generator refuse vì similarity search (RRF) dilute trên token có mặt ở nhiều chunk, chunk đích không lọt top-k.
+**Vấn đề:** câu hỏi dạng _"điểm h khoản 14 Điều 32 NĐ 168 là gì"_ bị generator refuse vì similarity search (RRF) dilute trên token có mặt ở nhiều chunk, chunk đích không lọt top-k.
 
 **Giải pháp (Option A — precise structural retrieval):**
 
 1. Retriever thêm method public [`get_chunks_by_location(doc_id, dieu, khoan, diem)`](traffic_rag/source/rag_core/retriever.py#L166-L207) — direct O(1) metadata lookup qua `_dieu_to_ids`, không qua similarity.
 2. Nodes thêm `_REF_DIEU/_REF_KHOAN/_REF_DIEM` regex + [`_extract_legal_references(*texts)`](traffic_rag/source/agent/nodes.py#L194-L228) parse 2 pattern:
-   - *"điểm X khoản Y [Điều Z]"*
-   - *"khoản Y Điều Z"* (pull cả Khoản)
+   - _"điểm X khoản Y [Điều Z]"_
+   - _"khoản Y Điều Z"_ (pull cả Khoản)
 3. Structural pass chèn vào [`legal_rag_node`](traffic_rag/source/agent/nodes.py#L254-L278) ngay sau `get_relevant_chunks` — merge non-duplicate vào chunks list trước khi generator chạy.
 
 **Smoke test (production log):**
@@ -1090,7 +1101,7 @@ Answer: "Điểm h khoản 14 Điều 32 NĐ 168/2024/NĐ-CP quy định về h�
 
 ### B.3 Cải thiện quy tắc 6 — Markdown nested list (UX)
 
-**Trước v5.6:** Rule 6 mô tả chung chung *"liệt kê 1., 2., 3."* → LLM thường gộp sub-điểm `a) … b) … c) …` trên cùng một dòng, khó đọc.
+**Trước v5.6:** Rule 6 mô tả chung chung _"liệt kê 1., 2., 3."_ → LLM thường gộp sub-điểm `a) … b) … c) …` trên cùng một dòng, khó đọc.
 
 **Sau v5.6:** Rule 6 rewrite để buộc **xuống dòng từng sub-điểm** với thụt lề 3 space + dòng trống giữa các mục chính. Generator giờ trả về Markdown nested list đúng chuẩn, Streamlit render sạch.
 
@@ -1101,4 +1112,35 @@ Answer: "Điểm h khoản 14 Điều 32 NĐ 168/2024/NĐ-CP quy định về h�
 
 ---
 
-*Báo cáo được cập nhật từ mã nguồn hiện hành. Mọi chỉ số kỹ thuật (2.705 chunks, 424.677 tokens, top-k 10/20, RRF k=60…) được đọc trực tiếp từ log uvicorn lifespan + nguồn code tại `traffic_rag/source/`.*
+## Phụ lục C — Changelog v5.6 → v5.8.1
+
+### C.1 Generator: Plain Language Enforcement (v5.7)
+
+**Vấn đề:** Các câu trả lời của LLM thường lặp lại nguyên văn văn bản luật, dẫn đến việc người dùng bình thường khó hiểu (đặc biệt khi mô tả hành vi).
+
+**Giải pháp:** Thêm **Rule 13** vào `SYSTEM_PROMPT` của `LegalAnswerGenerator`, buộc LLM phải sử dụng "ngôn ngữ dân dã, dễ hiểu" để mô tả vi phạm, trước khi đưa ra mức phạt. Rule 13 sư dụng ví dụ ❌ SAI và ✅ ĐÚNG rõ ràng để zero-shot prompt Gemini Flash Lite.
+Từ đó, thay vì "Điều khiển xe đi không đúng chiều đường của chiều đi", AI sẽ trả lời "Đi ngược chiều" một cách thân thiện, tăng cường trải nghiệm người dùng.
+
+### C.2 Retriever: Superseded Document Filtering (v5.8)
+
+**Vấn đề:** Luật Trật tự ATGT 2024 (Luật 36/2024) và Thông tư 35/2024 thay đổi hạng GPLX (B1, B2 gộp thành B; hạng A, C1...), tuy nhiên BM25 và Dense Search vẫn bị thu hút bởi các keyword có trong Thông tư 12/2017 (luật cũ), đẩy luật cũ lên Top-k và buộc Generator từ chối trả lời vì thiếu luật mới.
+
+**Giải pháp:**
+
+- Cập nhật payload trực tiếp trong Qdrant bằng `client.set_payload()`, đổi thuộc tính `status` của 134 chunk thuộc TT 12/2017 thành `"superseded"`.
+- BM25 cũng áp dụng bộ lọc `status="active"` ngay lúc khởi chạy `TrafficHybridRetriever._build_bm25_corpus`.
+  Nhờ cơ chế này, hệ thống RAG miễn nhiễm với nhiễu từ các văn bản đã hết hiệu lực mà không cần phải xóa chúng ra khỏi CSDL, đảm bảo câu trả lời luôn cập nhật nhất (theo GPLX 2024 mới).
+
+### C.3 Analyzer: Intent Retention & Broad Query Expansion (v5.8.1)
+
+**Vấn đề:** Khi người dùng hỏi gộp nhiều ý (ví dụ: "khi nào áp dụng và có những hạng nào"), Analyzer thường bị miss ý thứ hai trong quá trình sinh `expanded_query`. Retriever thiếu các query liên quan đến liệt kê (ví dụ: "gồm những hạng nào", "có mấy loại").
+
+**Giải pháp:**
+
+1. Thêm chỉ thị **GIỮ NGUYÊN MỌI INTENT** trực tiếp vào `ANALYZER_SYSTEM_PROMPT` trong `nodes.py`, ép LLM không được lược bỏ bất kỳ ý phụ nào của User khi dịch sang thuật ngữ tra cứu.
+2. Mở rộng bộ regex `BROAD_QUERY_PATTERNS` để detect nhiều trường hợp hỏi liệt kê danh sách: `r"\bhạng nào\b", r"\bcác hạng\b", r"\bbao gồm\b"...`
+3. Nâng `LEGAL_RAG_TOP_K_DEFAULT` lên 15 và `LEGAL_RAG_TOP_K_BROAD` lên 25 để tăng Window Context khi xử lý các câu hỏi đa ý đồ và phạm vi rộng (Broad).
+
+---
+
+_Báo cáo được cập nhật từ mã nguồn hiện hành. Mọi chỉ số kỹ thuật (2.705 chunks, 424.677 tokens, top-k 10/20. RRF k=60…) được đọc trực tiếp từ log uvicorn lifespan + nguồn code tại `traffic_rag/source/`._

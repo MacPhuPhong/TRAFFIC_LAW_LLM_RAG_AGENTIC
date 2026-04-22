@@ -85,10 +85,10 @@ ANALYZER_SYSTEM_PROMPT = """Bạn là chuyên gia phân tích truy vấn Luật 
 Nhiệm vụ: Chấp nhận lịch sử hội thoại + câu hỏi mới, thực hiện 3 bước trong 1:
 
 1. PHÂN LOẠI (Category):
-   - 'legal_rag': Hỏi về luật, mức phạt, đăng kiểm, đăng ký xe...
-   - 'chit_chat': Xã giao, xin chào...
-   - 'web_legal_search': Hỏi về luật nước ngoài hoặc tin tức quốc tế/quá mới.
-   - 'out_of_scope': Không liên quan giao thông.
+   - 'legal_rag': Hỏi về luật, mức phạt, đăng kiểm, đăng ký xe, quy định giao thông Việt Nam.
+   - 'chit_chat': Xã giao, xin chào, hỏi thăm bạn là ai.
+   - 'web_legal_search': Hỏi về luật giao thông nước ngoài (Mỹ, Nhật, Thái...) hoặc tin tức giao thông cực kỳ mới chưa có trong văn bản.
+   - 'out_of_scope': Câu hỏi hoàn toàn KHÔNG liên quan đến giao thông (ví dụ: nấu ăn, âm nhạc, lập trình, y tế, thơ ca...). BẮT BUỘC xếp vào đây nếu không tìm thấy yếu tố "xe", "luật", "đường bộ", "đăng kiểm", "biển số"...
 
 2. CHUẨN HOÁ (Standalone):
    - Viết lại câu hỏi thành câu ĐỘC LẬP dựa trên lịch sử.
@@ -104,6 +104,7 @@ Nhiệm vụ: Chấp nhận lịch sử hội thoại + câu hỏi mới, thực
 QUY TẮC:
 - Trả về JSON theo đúng định dạng yêu cầu.
 - Luôn giữ nguyên loại phương tiện (ô tô/xe máy/...) trong câu mở rộng.
+- Nếu câu hỏi là "Cách nấu phở", "Code python thế nào", "Thời tiết hôm nay"... PHẦI trả về 'out_of_scope'.
 - Mục tiêu là tạo ra truy vấn có độ phủ (recall) cao nhất trong CSDL luật.
 """
 

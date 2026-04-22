@@ -23,7 +23,6 @@ class AgentState(TypedDict, total=False):
     refused: bool
     web_results: list[dict]
     warning_prefix: str
-    risk_flag: bool
     requires_approval: bool
     model_info: str
     error: str

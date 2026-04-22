@@ -22,34 +22,6 @@ from .state import AgentState, Category
 logger = logging.getLogger(__name__)
 
 
-# --- Soft risk tagging -------------------------------------------------------
-#
-# Risk detection no longer blocks: the legal_rag path trusts the cited corpus
-# (Nghị định 168/2024 + Luật ATGT) to return authoritative answers. Instead,
-# `risk_tag_node` sets a UI-only warning flag so the frontend can display a
-# cautionary pill above the answer. The REAL HITL gate now sits on the web
-# fallback path (see `web_finalize_node`) where content quality is uncertain.
-
-RISK_PATTERNS: tuple[str, ...] = (
-    r"tịch thu",
-    r"hình sự",
-    r"truy cứu trách nhiệm",
-    r"tạm giữ phương tiện",
-    r"tước quyền sử dụng",
-)
-
-
-def risk_tag_node(state: AgentState) -> dict:
-    """Tag queries that touch heavy sanctions with `risk_flag=True` so the UI
-    can warn users that the answer involves serious penalties. Non-blocking:
-    the graph continues straight to legal_rag regardless."""
-    q = (state.get("query") or "").lower()
-    flagged = any(re.search(p, q) for p in RISK_PATTERNS)
-    if flagged:
-        logger.info("Risk tag: query touches heavy-sanction topics")
-    return {"risk_flag": flagged}
-
-
 # --- Prompts -----------------------------------------------------------------
 
 CHIT_CHAT_SYSTEM_PROMPT = """Bạn là Trợ lý Luật Giao thông Việt Nam thân thiện.
@@ -220,8 +192,7 @@ def make_legal_rag_node(retriever, generator) -> Callable[[AgentState], dict]:
             else LEGAL_RAG_TOP_K_DEFAULT
         )
         try:
-            # Tăng top_k lên 20 để bao quát đủ các trường hợp cụ thể (tịch thu, tước quyền sử dụng)
-            chunks = retriever.get_relevant_chunks(retrieval_query, top_k=20)
+            chunks = retriever.get_relevant_chunks(retrieval_query, top_k=top_k)
 
         except Exception as exc:
             logger.exception("Retriever failed: %s", exc)

@@ -239,12 +239,6 @@ def _render_message(msg: dict) -> None:
                 st.caption("💡 Chỉnh sửa trong ô trên rồi bấm Duyệt để phát hành bản đã sửa.")
             return
 
-        if msg.get("risk_flag"):
-            st.warning(
-                "🛑 Câu hỏi liên quan chế tài nặng (tịch thu / hình sự / tước GPLX). "
-                "Câu trả lời dưới đây trích nguyên văn văn bản pháp luật; "
-                "chỉ mang tính tham khảo, không thay thế tư vấn của luật sư."
-            )
         if msg.get("answer"):
             st.markdown(msg["answer"])
         if msg.get("error"):
@@ -259,7 +253,6 @@ def _finalize_pending(idx: int, result: dict) -> None:
         "answer": result.get("answer"),
         "sources": result.get("sources", []),
         "category": result.get("category") or st.session_state.pending_category,
-        "risk_flag": bool(result.get("risk_flag")),
         "model_info": result.get("model_info"),
         "error": result.get("error"),
         "pending": False,
@@ -306,7 +299,6 @@ def _handle_user_query(query: str) -> None:
                 "sources": resp.get("sources", []),
                 "thread_id": resp["thread_id"],
                 "category": resp.get("category"),
-                "risk_flag": bool(resp.get("risk_flag")),
                 "model_info": resp.get("model_info"),
                 "idx": idx,
             }
@@ -319,7 +311,6 @@ def _handle_user_query(query: str) -> None:
             "answer": resp.get("answer"),
             "sources": resp.get("sources", []),
             "category": resp.get("category"),
-            "risk_flag": bool(resp.get("risk_flag")),
             "model_info": resp.get("model_info"),
             "error": resp.get("error"),
             "pending": False,

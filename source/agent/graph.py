@@ -3,16 +3,15 @@
 graph.py — Assemble the LangGraph StateGraph.
 
 Flow:
-    START -> analyzer ─┬─▶ risk_tag -> legal_rag ─┬─▶ END            (trusted corpus)
-                       │                           └─▶ web_search -> web_finalize -> END
+    START -> analyzer ─┬─▶ legal_rag ─┬─▶ END            (trusted corpus)
+                       │               └─▶ web_search -> web_finalize -> END
                        ├─▶ chit_chat -> END
                        ├─▶ web_search -> web_finalize -> END
                        └─▶ out_of_scope -> END
 
 HITL design:
-    - `risk_tag` is NON-BLOCKING — it only sets `risk_flag` for a UI warning
-      pill. Local RAG answers cite the official corpus (NĐ 168/2024, Luật ATGT)
-      so they are trusted by default.
+    - Local RAG answers cite the official corpus (NĐ 168/2024, Luật ATGT) and
+      are trusted by default — they flow straight to the user.
     - `interrupt_before=["web_finalize"]` is the ACTUAL gate: any answer
       synthesised from open-internet content pauses for human review. The
       reviewer sees the `draft_answer` + source URLs and approves / rejects
@@ -35,7 +34,6 @@ from .nodes import (
     make_legal_rag_node,
     make_web_search_node,
     out_of_scope_node,
-    risk_tag_node,
     route_by_category,
     web_finalize_node,
 )
@@ -81,7 +79,6 @@ def build_graph(
     workflow = StateGraph(AgentState)
 
     workflow.add_node("analyzer", make_analyzer_node(llm))
-    workflow.add_node("risk_tag", risk_tag_node)
     workflow.add_node("legal_rag", make_legal_rag_node(retriever, generator))
     workflow.add_node("chit_chat", make_chit_chat_node(llm))
     workflow.add_node("out_of_scope", out_of_scope_node)
@@ -94,13 +91,12 @@ def build_graph(
         "analyzer",
         route_by_category,
         {
-            "legal_rag": "risk_tag",
+            "legal_rag": "legal_rag",
             "chit_chat": "chit_chat",
             "web_legal_search": "web_search",
             "out_of_scope": "out_of_scope",
         },
     )
-    workflow.add_edge("risk_tag", "legal_rag")
     workflow.add_conditional_edges(
         "legal_rag",
         legal_fallback_router,

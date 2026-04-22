@@ -181,7 +181,6 @@ def _snapshot_to_response(thread_id: str, snap) -> ChatResponse:
         answer=values.get("answer"),
         sources=values.get("sources", []),
         category=values.get("category"),
-        risk_flag=bool(values.get("risk_flag")),
         requires_approval=False,
         model_info=values.get("model_info"),
         expanded_query=values.get("expanded_query"),
@@ -216,7 +215,6 @@ async def chat(req: ChatRequest):
             draft_answer=values.get("draft_answer"),
             sources=values.get("sources", []),
             category=values.get("category"),
-            risk_flag=bool(values.get("risk_flag")),
             requires_approval=True,
             model_info=values.get("model_info"),
             expanded_query=values.get("expanded_query"),
@@ -269,7 +267,6 @@ async def resume(thread_id: str, req: ResumeRequest):
             answer=rejection_msg,
             sources=[],
             category=snap.values.get("category") if snap.values else None,
-            risk_flag=bool(snap.values.get("risk_flag")) if snap.values else False,
             requires_approval=False,
         )
 

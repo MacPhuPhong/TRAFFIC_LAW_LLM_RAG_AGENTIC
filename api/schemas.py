@@ -34,11 +34,6 @@ class ChatResponse(BaseModel):
     )
     sources: list[dict[str, Any]] = Field(default_factory=list)
     category: str | None = None
-    risk_flag: bool = Field(
-        False,
-        description="Soft warning — query touches heavy sanctions (tịch thu, hình sự, …). "
-        "Answer still produced; UI should show a caution pill.",
-    )
     requires_approval: bool = False
     model_info: str | None = None
     expanded_query: str | None = None

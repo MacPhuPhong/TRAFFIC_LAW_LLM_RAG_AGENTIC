@@ -97,10 +97,12 @@ Nhiệm vụ: Chấp nhận lịch sử hội thoại + câu hỏi mới, thực
 3. MỞ RỘNG (Expanded):
    - Dịch sang thuật ngữ chuyên môn (Nghị định 168/2024, Luật 2024).
    - "vượt đèn đỏ" -> "không chấp hành hiệu lệnh đèn tín hiệu giao thông".
+   - "khi nào bị tịch thu/tạm giữ" -> "trường hợp áp dụng hình thức xử phạt bổ sung tịch thu phương tiện hoặc tạm giữ phương tiện".
 
 QUY TẮC:
 - Trả về JSON theo đúng định dạng yêu cầu.
 - Giữ nguyên đối tượng (ô tô/xe máy) user đề cập.
+- Nếu user hỏi "trường hợp nào/khi nào" bị phạt, hãy mở rộng thành các từ khóa bao quát như "hành vi vi phạm", "hình thức xử phạt", "quy định về".
 """
 
 
@@ -179,13 +181,44 @@ def route_by_category(state: AgentState) -> str:
 
 
 
+# Listing-type queries ("khi nào", "các trường hợp", "liệt kê", ...) need a
+# wider retrieval window than pinpoint queries. Regex is enough — these phrases
+# are distinctive in Vietnamese and avoid an extra LLM hop.
+BROAD_QUERY_PATTERNS: tuple[str, ...] = (
+    r"\bkhi nào\b",
+    r"\btrường hợp\b",
+    r"\bcác trường hợp\b",
+    r"\bnhững trường hợp\b",
+    r"\bliệt kê\b",
+    r"\bcác lỗi\b",
+    r"\blỗi nào\b",
+    r"\bnhững lỗi\b",
+    r"\bcác hành vi\b",
+    r"\bdanh sách\b",
+    r"\bđiều kiện\b",
+)
+
+LEGAL_RAG_TOP_K_DEFAULT = 10
+LEGAL_RAG_TOP_K_BROAD = 20
+
+
+def _is_broad_query(*texts: str) -> bool:
+    blob = " ".join(t for t in texts if t).lower()
+    return any(re.search(p, blob) for p in BROAD_QUERY_PATTERNS)
+
+
 def make_legal_rag_node(retriever, generator) -> Callable[[AgentState], dict]:
     def legal_rag_node(state: AgentState) -> dict:
         query = state["query"]
         retrieval_query = state.get("expanded_query") or query
+        top_k = (
+            LEGAL_RAG_TOP_K_BROAD
+            if _is_broad_query(state.get("raw_query", ""), query, retrieval_query)
+            else LEGAL_RAG_TOP_K_DEFAULT
+        )
         try:
-            # Tăng top_k lên 10 để bao quát đủ các loại phương tiện (ô tô, xe máy, xe chuyên dùng)
-            chunks = retriever.get_relevant_chunks(retrieval_query, top_k=10)
+            # Tăng top_k lên 20 để bao quát đủ các trường hợp cụ thể (tịch thu, tước quyền sử dụng)
+            chunks = retriever.get_relevant_chunks(retrieval_query, top_k=20)
 
         except Exception as exc:
             logger.exception("Retriever failed: %s", exc)

@@ -48,6 +48,7 @@ QUY TẮC PHÂN BIỆT NGỮ CẢNH:
       Trả lời: "Phạt tiền 18.000.000–20.000.000 đồng + trừ 04 điểm GPLX [Điều 6, Khoản 9, Điểm c — NĐ 168/2024/NĐ-CP] [Điều 6, Khoản 16, Điểm b — NĐ 168/2024/NĐ-CP]".
     - Nếu bảng trừ điểm KHÔNG liệt kê (khoản Y, điểm X) → nói "không bị trừ điểm GPLX", KHÔNG từ chối.
 11. QUAN TRỌNG — KHÔNG được từ chối nếu ngữ cảnh có ÍT NHẤT một phần thông tin liên quan. Nếu tìm được mức phạt tiền nhưng không tìm được số điểm trừ (hoặc ngược lại), trả lời phần tìm được và ghi rõ một câu ngắn về phần thiếu. Chỉ dùng câu từ chối ở Quy tắc 4 khi ngữ cảnh KHÔNG có bất kỳ chunk nào liên quan đến câu hỏi.
+12. TỔNG HỢP (Summarization): Với các câu hỏi yêu cầu liệt kê (Trường hợp nào, Các hành vi...), hãy rà soát TOÀN BỘ ngữ cảnh để trích xuất các ví dụ tiêu biểu và tổng hợp thành một danh sách đầy đủ nhất có thể dựa trên tài liệu.
 """.replace("{REFUSAL}", REFUSAL_PHRASE)
 
 

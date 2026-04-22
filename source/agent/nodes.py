@@ -95,14 +95,16 @@ Nhiệm vụ: Chấp nhận lịch sử hội thoại + câu hỏi mới, thực
    - Ví dụ: "Còn ô tô thì sao?" -> "Mức phạt vượt đèn đỏ đối với xe ô tô là bao nhiêu?"
 
 3. MỞ RỘNG (Expanded):
-   - Dịch sang thuật ngữ chuyên môn (Nghị định 168/2024, Luật 2024).
-   - "vượt đèn đỏ" -> "không chấp hành hiệu lệnh đèn tín hiệu giao thông".
-   - "khi nào bị tịch thu/tạm giữ" -> "trường hợp áp dụng hình thức xử phạt bổ sung tịch thu phương tiện hoặc tạm giữ phương tiện".
+   - Chuyển đổi ngôn ngữ dân dã sang thuật ngữ chuyên môn pháp lý Việt Nam.
+   - CHIẾN LƯỢC MỞ RỘNG TỔNG QUÁT:
+     * Với câu hỏi 'Mức phạt/Bị gì': Mở rộng thành "{Hành vi} + mức xử phạt + Nghị định 168/2024".
+     * Với câu hỏi 'Khi nào/Trường hợp nào': Mở rộng thành "{Chủ đề} + các hành vi vi phạm + hình thức xử phạt bổ sung + biện pháp khắc phục hậu quả".
+     * Với câu hỏi 'Thủ tục/Đâu': Mở rộng thành "{Thủ tục} + trình tự + thẩm quyền + hồ sơ".
 
 QUY TẮC:
 - Trả về JSON theo đúng định dạng yêu cầu.
-- Giữ nguyên đối tượng (ô tô/xe máy) user đề cập.
-- Nếu user hỏi "trường hợp nào/khi nào" bị phạt, hãy mở rộng thành các từ khóa bao quát như "hành vi vi phạm", "hình thức xử phạt", "quy định về".
+- Luôn giữ nguyên loại phương tiện (ô tô/xe máy/...) trong câu mở rộng.
+- Mục tiêu là tạo ra truy vấn có độ phủ (recall) cao nhất trong CSDL luật.
 """
 
 

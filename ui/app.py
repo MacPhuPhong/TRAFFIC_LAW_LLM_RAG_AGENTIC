@@ -35,6 +35,101 @@ st.set_page_config(
     layout="wide",
 )
 
+# --- Modern UI Styles (Glass Legal Pro v5.0) ---------------------------------
+st.markdown(
+    """
+    <style>
+    /* Google Fonts */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Outfit:wght@400;700&display=swap');
+
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif;
+    }
+
+    h1, h2, h3 {
+        font-family: 'Outfit', sans-serif;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+    }
+
+    /* Main App Background */
+    .stApp {
+        background-color: #0e1117;
+    }
+
+    /* Glass Sidebar */
+    section[data-testid="stSidebar"] {
+        background: rgba(17, 25, 40, 0.75) !important;
+        backdrop-filter: blur(12px) saturate(180%);
+        border-right: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    /* Chat Input Styling */
+    .stChatInputContainer {
+        padding-bottom: 20px;
+    }
+
+    /* Custom Message Container */
+    .message-container {
+        padding: 1.2rem;
+        border-radius: 12px;
+        margin-bottom: 1rem;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .user-msg {
+        background: rgba(255, 255, 255, 0.03);
+    }
+
+    .assistant-msg {
+        background: rgba(94, 106, 210, 0.05);
+        border-left: 4px solid #5e6ad2;
+    }
+
+    /* Sources Glass Cards */
+    .source-card {
+        background: rgba(255, 255, 255, 0.05);
+        backdrop-filter: blur(4px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        padding: 8px 12px;
+        margin-top: 6px;
+        transition: all 0.2s ease;
+    }
+    .source-card:hover {
+        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(94, 106, 210, 0.4);
+    }
+
+    /* Status Pills */
+    .status-pill {
+        display: inline-block;
+        padding: 2px 10px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        margin-right: 8px;
+        background: rgba(94, 106, 210, 0.2);
+        color: #8c9eff;
+        border: 1px solid rgba(94, 106, 210, 0.3);
+    }
+    
+    .stWarning {
+        background: rgba(255, 152, 0, 0.1) !important;
+        border: 1px solid rgba(255, 152, 0, 0.2) !important;
+        color: #ff9800 !important;
+        border-radius: 10px;
+    }
+    
+    .stSuccess {
+        background: rgba(76, 175, 80, 0.1) !important;
+        border: 1px solid rgba(76, 175, 80, 0.2) !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 
 # --- session-state bootstrap ------------------------------------------------
 
@@ -140,45 +235,57 @@ with st.sidebar:
 
 # --- main column ------------------------------------------------------------
 
-st.title("🚗 Trợ lý Pháp lý Giao thông Việt Nam")
-st.caption("Agentic RAG · LangGraph · Human-in-the-loop · Web-search fallback")
+st.markdown(
+    """
+    <h1 style='text-align: left; background: -webkit-linear-gradient(#fff, #999); -webkit-background-clip: text; -webkit-text-fill-color: transparent;'>
+        🚗 Trợ lý Pháp lý Giao thông VN
+    </h1>
+    """,
+    unsafe_allow_html=True
+)
+st.caption("Agentic RAG · Cinematic Dark · HITL v4.1 · Glass UI v5.0")
 
 
 def _render_sources(sources: list[dict]) -> None:
     if not sources:
         return
-    with st.expander(f"📚 Nguồn ({len(sources)})", expanded=False):
+    with st.expander(f"📚 Nguồn trích dẫn ({len(sources)})", expanded=False):
         for i, s in enumerate(sources, 1):
+            st.markdown('<div class="source-card">', unsafe_allow_html=True)
             if s.get("url"):
                 st.markdown(
                     f"**[{i}]** [{s.get('title') or s['url']}]({s['url']})"
                 )
             else:
                 parts = []
-                if s.get("dieu"):
-                    parts.append(f"Điều {s['dieu']}")
-                if s.get("khoan"):
-                    parts.append(f"Khoản {s['khoan']}")
-                if s.get("diem"):
-                    parts.append(f"Điểm {s['diem']}")
+                if s.get("dieu"): parts.append(f"Điều {s['dieu']}")
+                if s.get("khoan"): parts.append(f"Khoản {s['khoan']}")
+                if s.get("diem"): parts.append(f"Điểm {s['diem']}")
                 loc = " · ".join(parts)
                 doc = s.get("ten_van_ban") or s.get("doc_id", "")
                 did = s.get("doc_id", "")
-                st.markdown(f"**[{i}]** {loc} — {doc} _({did})_")
+                st.markdown(f"**[{i}]** {loc} — {doc} <br><small style='opacity:0.6'>{did}</small>", unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
 
 
 def _render_message(msg: dict) -> None:
     if msg["role"] == "user":
         with st.chat_message("user"):
-            st.markdown(msg["content"])
+            st.markdown(f'<div class="message-container user-msg">{msg["content"]}</div>', unsafe_allow_html=True)
         return
 
     with st.chat_message("assistant"):
         cat = msg.get("category")
         if cat and cat in CATEGORY_LABELS:
             icon, label = CATEGORY_LABELS[cat]
-            st.caption(f"{icon} **{label}** · model: `{msg.get('model_info') or '?'}`")
+            st.markdown(
+                f'<span class="status-pill">{icon} {label}</span>'
+                f'<small style="opacity:0.5">model: {msg.get("model_info") or "gemini-flash"}</small>',
+                unsafe_allow_html=True
+            )
 
+        st.markdown('<div class="message-container assistant-msg">', unsafe_allow_html=True)
+        
         if msg.get("pending"):
             st.warning(
                 "🕵️ **Câu trả lời được tổng hợp từ Internet — đang chờ chuyên gia pháp lý duyệt.**\n\n"
@@ -223,6 +330,7 @@ def _render_message(msg: dict) -> None:
                     st.rerun()
             with col3:
                 st.caption("💡 Chỉnh sửa trong ô trên rồi bấm Duyệt để phát hành bản đã sửa.")
+            st.markdown('</div>', unsafe_allow_html=True)
             return
 
         if msg.get("risk_flag"):
@@ -235,6 +343,8 @@ def _render_message(msg: dict) -> None:
             st.markdown(msg["answer"])
         if msg.get("error"):
             st.error(msg["error"])
+        
+        st.markdown('</div>', unsafe_allow_html=True)
         _render_sources(msg.get("sources", []))
 
 

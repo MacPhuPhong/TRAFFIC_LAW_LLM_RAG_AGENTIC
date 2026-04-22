@@ -35,88 +35,17 @@ st.set_page_config(
     layout="wide",
 )
 
-# --- Modern UI Styles (Glass Legal Pro v5.0) ---------------------------------
+# --- Simple UI Optimization --------------------------------------------------
 st.markdown(
     """
     <style>
-    /* Google Fonts */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Outfit:wght@400;700&display=swap');
-
-    /* Global Typography */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
     html, body, [class*="css"] {
         font-family: 'Inter', sans-serif;
     }
-    h1, h2, h3 {
-        font-family: 'Outfit', sans-serif;
-        font-weight: 700;
-        letter-spacing: -0.02em;
-    }
-
-    /* Core Container Styling - TO FIX WHITE BORDERS */
-    .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"], [data-testid="stToolbar"] {
-        background-color: #0c0d10 !important;
-    }
-    
-    header {visibility: hidden;}
-    footer {visibility: hidden;}
-
-    /* Sidebar Styling */
-    section[data-testid="stSidebar"] {
-        background: #0f1115 !important;
-        border-right: 1px solid rgba(255, 255, 255, 0.05);
-    }
-
-    /* Message Bubbles - Minimalist Editorial Style */
-    .message-container {
-        padding: 1.2rem;
-        border-radius: 12px;
-        margin-bottom: 1rem;
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        line-height: 1.6;
-    }
-    .user-msg {
-        background: rgba(255, 255, 255, 0.04);
-        color: #e0e0e0;
-    }
-    .assistant-msg {
-        background: rgba(94, 106, 210, 0.06);
-        border-left: 3px solid #5e6ad2;
-        color: #ffffff;
-    }
-
-    /* Source Cards */
-    .source-card {
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.07);
-        border-radius: 8px;
-        padding: 10px 14px;
-        margin-top: 8px;
-        font-size: 0.9rem;
-    }
-    .source-card:hover {
-        background: rgba(255, 255, 255, 0.06);
-        border-color: #5e6ad2;
-    }
-
-    /* UI Pill Elements */
-    .status-pill {
-        display: inline-block;
-        padding: 2px 12px;
-        border-radius: 100px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        background: rgba(94, 106, 210, 0.15);
-        color: #9ea9ff;
-        border: 1px solid rgba(94, 106, 210, 0.3);
-        margin-bottom: 8px;
-    }
-    
-    /* Input Box */
-    .stChatInputContainer {
-        border-top: 1px solid rgba(255, 255, 255, 0.05);
-        padding-top: 10px;
+    .stChatMessage {
+        border-radius: 10px;
+        margin-bottom: 5px;
     }
     </style>
     """,
@@ -228,23 +157,15 @@ with st.sidebar:
 
 # --- main column ------------------------------------------------------------
 
-st.markdown(
-    """
-    <h1 style='text-align: left; background: -webkit-linear-gradient(#fff, #999); -webkit-background-clip: text; -webkit-text-fill-color: transparent;'>
-        🚗 Trợ lý Pháp lý Giao thông VN
-    </h1>
-    """,
-    unsafe_allow_html=True
-)
-st.caption("Agentic RAG · Cinematic Dark · HITL v4.1 · Glass UI v5.0")
+st.title("🚗 Trợ lý Pháp lý Giao thông Việt Nam")
+st.caption("Agentic RAG · LangGraph · Human-in-the-loop · Web-fallback")
 
 
 def _render_sources(sources: list[dict]) -> None:
     if not sources:
         return
-    with st.expander(f"📚 Nguồn trích dẫn ({len(sources)})", expanded=False):
+    with st.expander(f"📚 Nguồn ({len(sources)})", expanded=False):
         for i, s in enumerate(sources, 1):
-            st.markdown('<div class="source-card">', unsafe_allow_html=True)
             if s.get("url"):
                 st.markdown(
                     f"**[{i}]** [{s.get('title') or s['url']}]({s['url']})"
@@ -252,33 +173,26 @@ def _render_sources(sources: list[dict]) -> None:
             else:
                 parts = []
                 if s.get("dieu"): parts.append(f"Điều {s['dieu']}")
-                if s.get("khoan"): parts.append(f"Khoản {s['khoan']}")
+                if s.get("khoan"): parts.append(f"Khoán {s['khoan']}")
                 if s.get("diem"): parts.append(f"Điểm {s['diem']}")
                 loc = " · ".join(parts)
                 doc = s.get("ten_van_ban") or s.get("doc_id", "")
                 did = s.get("doc_id", "")
-                st.markdown(f"**[{i}]** {loc} — {doc} <br><small style='opacity:0.6'>{did}</small>", unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown(f"**[{i}]** {loc} — {doc} _({did})_")
 
 
 def _render_message(msg: dict) -> None:
     if msg["role"] == "user":
         with st.chat_message("user"):
-            st.markdown(f'<div class="message-container user-msg">{msg["content"]}</div>', unsafe_allow_html=True)
+            st.markdown(msg["content"])
         return
 
     with st.chat_message("assistant"):
         cat = msg.get("category")
         if cat and cat in CATEGORY_LABELS:
             icon, label = CATEGORY_LABELS[cat]
-            st.markdown(
-                f'<span class="status-pill">{icon} {label}</span>'
-                f'<small style="opacity:0.5">model: {msg.get("model_info") or "gemini-flash"}</small>',
-                unsafe_allow_html=True
-            )
+            st.caption(f"{icon} **{label}** · model: `{msg.get('model_info') or '?'}`")
 
-        st.markdown('<div class="message-container assistant-msg">', unsafe_allow_html=True)
-        
         if msg.get("pending"):
             st.warning(
                 "🕵️ **Câu trả lời được tổng hợp từ Internet — đang chờ chuyên gia pháp lý duyệt.**\n\n"
@@ -323,7 +237,6 @@ def _render_message(msg: dict) -> None:
                     st.rerun()
             with col3:
                 st.caption("💡 Chỉnh sửa trong ô trên rồi bấm Duyệt để phát hành bản đã sửa.")
-            st.markdown('</div>', unsafe_allow_html=True)
             return
 
         if msg.get("risk_flag"):
@@ -336,8 +249,6 @@ def _render_message(msg: dict) -> None:
             st.markdown(msg["answer"])
         if msg.get("error"):
             st.error(msg["error"])
-        
-        st.markdown('</div>', unsafe_allow_html=True)
         _render_sources(msg.get("sources", []))
 
 

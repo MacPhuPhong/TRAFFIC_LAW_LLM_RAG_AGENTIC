@@ -182,6 +182,52 @@ def _is_broad_query(*texts: str) -> bool:
     return any(re.search(p, blob) for p in BROAD_QUERY_PATTERNS)
 
 
+# Cross-reference pattern: catches "điểm h khoản 14 Điều 32" and its variants.
+# Similarity search dilutes pin-point references — resolve structurally via
+# retriever.get_chunks_by_location instead.
+_REF_DIEM = r"(?:điểm|diem)\s+([a-zđ])"
+_REF_KHOAN = r"(?:khoản|khoan)\s+(\d+)"
+_REF_DIEU = r"(?:điều|dieu)\s+(\d+)"
+DEFAULT_REF_DOC_ID = "168/2024/NĐ-CP"
+
+
+def _extract_legal_references(*texts: str) -> list[dict]:
+    """Return a list of {doc_id, dieu, khoan, diem} dicts for each explicit
+    legal reference found. Defaults doc_id to NĐ 168/2024/NĐ-CP when the user
+    does not name a document (the dominant corpus)."""
+    blob = " ".join(t for t in texts if t).lower()
+    refs: list[dict] = []
+    seen: set[tuple] = set()
+
+    # Pattern 1: "điểm X khoản Y" (optionally with "Điều Z" nearby).
+    for m in re.finditer(
+        rf"{_REF_DIEM}\s+{_REF_KHOAN}(?:[^.]{{0,40}}?{_REF_DIEU})?",
+        blob,
+    ):
+        diem, khoan, dieu = m.group(1), m.group(2), m.group(3)
+        if not dieu:
+            nearby = re.search(_REF_DIEU, blob)
+            dieu = nearby.group(1) if nearby else None
+        if not dieu:
+            continue
+        key = (DEFAULT_REF_DOC_ID, int(dieu), khoan, diem)
+        if key not in seen:
+            seen.add(key)
+            refs.append({"doc_id": DEFAULT_REF_DOC_ID, "dieu": int(dieu),
+                         "khoan": khoan, "diem": diem})
+
+    # Pattern 2: "khoản Y Điều Z" without điểm (pulls the whole Khoản).
+    for m in re.finditer(rf"{_REF_KHOAN}[^.]{{0,40}}?{_REF_DIEU}", blob):
+        khoan, dieu = m.group(1), m.group(2)
+        key = (DEFAULT_REF_DOC_ID, int(dieu), khoan, None)
+        if key not in seen:
+            seen.add(key)
+            refs.append({"doc_id": DEFAULT_REF_DOC_ID, "dieu": int(dieu),
+                         "khoan": khoan, "diem": None})
+
+    return refs
+
+
 def make_legal_rag_node(retriever, generator) -> Callable[[AgentState], dict]:
     def legal_rag_node(state: AgentState) -> dict:
         query = state["query"]
@@ -204,6 +250,32 @@ def make_legal_rag_node(retriever, generator) -> Callable[[AgentState], dict]:
                 "model_info": "",
                 "error": f"retriever_error: {exc}",
             }
+
+        # Structural pass: if the query quotes an explicit Điều/Khoản/Điểm
+        # reference (common in follow-ups like "điểm h khoản 14 Điều 32 là gì"),
+        # pull those chunks directly — similarity search often buries them.
+        refs = _extract_legal_references(
+            state.get("raw_query", ""), query, retrieval_query
+        )
+        if refs:
+            seen_ids = {c.id for c in chunks}
+            added = 0
+            for ref in refs:
+                try:
+                    extra = retriever.get_chunks_by_location(
+                        doc_id=ref["doc_id"], dieu=ref["dieu"],
+                        khoan=ref.get("khoan"), diem=ref.get("diem"),
+                    )
+                except Exception as exc:
+                    logger.warning("get_chunks_by_location failed for %s: %s", ref, exc)
+                    continue
+                for c in extra:
+                    if c.id in seen_ids:
+                        continue
+                    seen_ids.add(c.id)
+                    chunks.append(c)
+                    added += 1
+            logger.info("Reference-pass added %d chunks (refs=%s)", added, refs)
 
         chunk_dicts = [c.to_dict() for c in chunks]
         if not chunk_dicts:

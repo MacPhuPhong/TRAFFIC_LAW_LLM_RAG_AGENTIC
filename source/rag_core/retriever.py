@@ -163,6 +163,49 @@ class TrafficHybridRetriever:
         fused = self._rrf_fuse(dense_hits, bm25_hits, top_k)
         return self._attach_siblings(fused, max_neighbors=2)
 
+    def get_chunks_by_location(
+        self,
+        doc_id: str,
+        dieu: int,
+        khoan: str | int | None = None,
+        diem: str | None = None,
+    ) -> list[RetrievedChunk]:
+        """Direct metadata lookup — no similarity search.
+
+        Returns every chunk whose (doc_id, dieu [, khoan [, diem]]) matches.
+        Used when the query contains an explicit cross-reference like
+        "điểm h khoản 14 Điều 32" — similarity search often dilutes these
+        pin-point references, so we resolve them structurally instead.
+        """
+        try:
+            dieu_int = int(dieu)
+        except (TypeError, ValueError):
+            return []
+        row_ids = self._dieu_to_ids.get((doc_id, dieu_int), [])
+        if not row_ids:
+            return []
+
+        khoan_str = str(khoan) if khoan not in (None, "") else None
+        diem_str = str(diem).lower() if diem not in (None, "") else None
+
+        results: list[RetrievedChunk] = []
+        for rid in row_ids:
+            pl = self._payloads[rid]
+            if khoan_str is not None:
+                pk = pl.get("khoan")
+                if pk is None or str(pk) != khoan_str:
+                    continue
+            if diem_str is not None:
+                pd = pl.get("diem")
+                if pd is None or str(pd).lower() != diem_str:
+                    continue
+            content = pl.get("content", "")
+            metadata = {k: v for k, v in pl.items() if k != "content"}
+            results.append(
+                RetrievedChunk(id=rid, score=0.0, content=content, metadata=metadata)
+            )
+        return results
+
     @staticmethod
     def _auto_exclude_from_query(query: str) -> tuple[list[str], list[str]]:
         """

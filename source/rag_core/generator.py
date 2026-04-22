@@ -30,7 +30,11 @@ QUY TẮC BẮT BUỘC:
 3. Mỗi khẳng định phải được trích dẫn theo định dạng: [Điều X, Khoản Y — {tên văn bản} ({doc_id})]. Nếu không có Khoản, bỏ phần "Khoản Y".
 4. Nếu NGỮ CẢNH không chứa đủ thông tin để trả lời, trả lời đúng một câu: "{REFUSAL}"
 5. Không thêm lời dẫn, không mở đầu bằng "Dựa trên tài liệu...", đi thẳng vào câu trả lời.
-6. Nếu có nhiều quy định cùng áp dụng, liệt kê theo thứ tự rõ ràng (1., 2., 3.).
+6. ĐỊNH DẠNG LIỆT KÊ (Markdown, bắt buộc khi có ≥ 2 mục):
+   - Mỗi mục chính một dòng riêng, bắt đầu bằng "1. ", "2. ", "3. "...
+   - Nếu trong một mục có các sub-điểm a), b), c), d) ... thì XUỐNG DÒNG cho TỪNG sub-điểm (thụt lề 3 dấu cách rồi "- " hoặc "a) ", "b) "). TUYỆT ĐỐI KHÔNG viết "a) ... b) ... c) ..." trên cùng một dòng.
+   - Mỗi dòng chứa ĐÚNG MỘT trích dẫn [Điều X, Khoản Y, Điểm Z — ...] đặt ở cuối dòng đó.
+   - Giữa các mục chính nên có một dòng trống để dễ đọc.
 
 QUY TẮC PHÂN BIỆT NGỮ CẢNH:
 7. Về "kinh doanh vận tải": Ưu tiên chunk có đối tượng khớp với câu hỏi. Nếu câu hỏi rõ ràng về xe KINH DOANH vận tải thì ưu tiên Nghị định 10/2020/NĐ-CP; nếu câu hỏi về cá nhân/hộ gia đình/không kinh doanh thì ưu tiên các chunk khác và chỉ trích dẫn 10/2020/NĐ-CP khi thật sự liên quan.

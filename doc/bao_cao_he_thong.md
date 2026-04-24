@@ -1144,6 +1144,18 @@ Hệ thống đã được đánh giá qua tập dữ liệu 25 câu hỏi vàng
 - **Độ chính xác:** Agentic RAG cải thiện vượt bậc so với Vanilla RAG nhờ khả năng mở rộng truy vấn (Query Expansion) và xử lý dẫn chiếu chéo. F1 của Agentic RAG tiệm cận Gemini Only nhưng đảm bảo tính chính xác về mặt pháp lý (có trích dẫn nguồn).
 - **Trải nghiệm người dùng:** Độ trễ 18.4s là mức chấp nhận được cho các tư vấn pháp lý phức tạp cần tính chính xác tuyệt đối.
 
+### Bảng 2: So sánh hiệu năng Vector Database (RQ4)
+
+_Thử nghiệm trên 500 chunks, đo trung bình 50 lượt truy vấn._
+
+| Tiêu chí            | Qdrant (Docker) | ChromaDB (In-memory) | Nhận xét                                               |
+| :------------------ | :-------------: | :------------------: | :----------------------------------------------------- |
+| **Search Latency**  |     0.015s      |        0.002s        | Chroma nhanh hơn do chạy cùng tiến trình (In-process). |
+| **Filtered Search** |   **0.003s**    |        0.001s        | Cả hai đều xử lý lọc rất nhanh.                        |
+| **Tính năng lọc**   |  **Rất mạnh**   |        Cơ bản        | Qdrant hỗ trợ lọc phức tạp (Match, Range) tốt hơn.     |
+
+**Kết luận:** Dù ChromaDB nhanh hơn một chút về độ trễ thô (do không tốn chi phí mạng tới Docker), chúng ta chọn **Qdrant** vì khả năng quản lý Payload chuyên nghiệp và tính sẵn sàng cho môi trường Production (như lọc luật hết hiệu lực).
+
 ---
 
 _Cập nhật lần cuối: 24/04/2026 bởi Antigravity AI._

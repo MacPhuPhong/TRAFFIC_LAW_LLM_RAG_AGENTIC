@@ -1156,6 +1156,17 @@ _Thử nghiệm trên 500 chunks, đo trung bình 50 lượt truy vấn._
 
 **Kết luận:** Dù ChromaDB nhanh hơn một chút về độ trễ thô (do không tốn chi phí mạng tới Docker), chúng ta chọn **Qdrant** vì khả năng quản lý Payload chuyên nghiệp và tính sẵn sàng cho môi trường Production (như lọc luật hết hiệu lực).
 
+### Bảng 3: So sánh chất lượng kỹ thuật Prompt (RQ5)
+
+_Sử dụng Vanilla RAG Pipeline. Đo điểm F1-Score trên tập 25 câu hỏi mở._
+
+| Kỹ thuật Prompt                | F1-Score (Accuracy) | Ghi chú                                                                |
+| :----------------------------- | :-----------------: | :--------------------------------------------------------------------- |
+| **Base Prompt (Zero-Shot)**    |        0.14         | Prompt mặc định cơ bản, thường bỏ qua ngữ cảnh phụ.                    |
+| **Engineered Prompt (v5.8.2)** |      **0.15**       | Prompt đã tinh chỉnh (Rule 1-13), định dạng luật rõ ràng, dễ hiểu hơn. |
+
+**Nhận xét:** Việc áp dụng Prompt Engineering với các quy định khắt khe về định dạng trích dẫn và trả lời bằng ngôn ngữ đời thường (Rule 13) giúp duy trì sự chính xác (F1 tăng nhẹ) đồng thời tạo ra văn phong chuyên nghiệp và an toàn hơn so với việc để LLM tự do phản hồi.
+
 ---
 
 _Cập nhật lần cuối: 24/04/2026 bởi Antigravity AI._

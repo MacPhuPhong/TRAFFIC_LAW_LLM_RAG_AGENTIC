@@ -1,0 +1,2 @@
+backend,collection,n_points,n_queries,latency_p50_ms,latency_p95_ms,latency_mean_ms,recall_at_10_mean,mrr_mean
+"qdrant (hybrid BM25+dense, RRF)",traffic_law_v2,2705,25,103.7,116.83,103.73,0.3,0.197

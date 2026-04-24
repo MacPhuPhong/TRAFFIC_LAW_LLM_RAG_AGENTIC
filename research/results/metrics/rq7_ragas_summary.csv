@@ -1,0 +1,4 @@
+pipeline,n,faithfulness,answer_relevancy,context_precision,context_recall,error
+gemini_only,25,nan,nan,nan,nan,
+vanilla_rag,25,nan,nan,nan,nan,
+agentic_rag,25,nan,nan,nan,nan,

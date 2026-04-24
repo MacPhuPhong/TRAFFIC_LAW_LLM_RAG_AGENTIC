@@ -91,6 +91,7 @@ async def lifespan(app: FastAPI):
         model=model_name,
         temperature=0.1,
         google_api_key=os.getenv("GOOGLE_API_KEY"),
+        request_timeout=30,
     )
 
     tavily = TavilySearchTool()

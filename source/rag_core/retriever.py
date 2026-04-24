@@ -163,6 +163,8 @@ class TrafficHybridRetriever:
         fused = self._rrf_fuse(dense_hits, bm25_hits, top_k)
         return self._attach_siblings(fused, max_neighbors=2)
 
+    retrieve = get_relevant_chunks
+
     def get_chunks_by_location(
         self,
         doc_id: str,

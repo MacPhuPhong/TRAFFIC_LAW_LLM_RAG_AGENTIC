@@ -126,16 +126,27 @@ def make_analyzer_node(llm) -> Callable[[AgentState], dict]:
         history_text = _format_history_for_prompt(history)
 
         try:
-            result: AnalyzerOutput = structured.invoke(
+            result = structured.invoke(
                 [
                     SystemMessage(content=ANALYZER_SYSTEM_PROMPT),
                     HumanMessage(content=f"Lịch sử hội thoại:\n{history_text}\n\nCâu hỏi mới nhất: {raw}"),
                 ]
             )
+            
+            # Global fallback if structured output returns None or is missing key fields
+            if not result or not hasattr(result, "category"):
+                logger.warning("Analyzer returned empty or malformed result; using defaults")
+                return {
+                    "category": "legal_rag", 
+                    "query": raw, 
+                    "expanded_query": raw, 
+                    "raw_query": raw
+                }
+
             return {
-                "category": result.category,
-                "query": result.standalone_query,
-                "expanded_query": result.expanded_query,
+                "category": getattr(result, "category", "legal_rag"),
+                "query": getattr(result, "standalone_query", raw),
+                "expanded_query": getattr(result, "expanded_query", raw),
                 "raw_query": raw,
             }
         except Exception as exc:
@@ -182,8 +193,8 @@ BROAD_QUERY_PATTERNS: tuple[str, ...] = (
     r"\bbao gồm\b",
 )
 
-LEGAL_RAG_TOP_K_DEFAULT = 15
-LEGAL_RAG_TOP_K_BROAD = 25
+LEGAL_RAG_TOP_K_DEFAULT = 30
+LEGAL_RAG_TOP_K_BROAD = 45
 
 
 def _is_broad_query(*texts: str) -> bool:
@@ -289,13 +300,15 @@ def make_legal_rag_node(retriever, generator) -> Callable[[AgentState], dict]:
         # --- Cross-reference resolution pass (v5.7) --------------------------
         # Retrieved chunks often contain cross-references like:
         #   "hành vi quy định tại điểm a khoản 4 Điều 13"
-        # The LLM cannot explain these unless we resolve them.  Scan the
-        # content of ALL current chunks and pull in the referenced articles
-        # so the generator has full context to describe violations.
-        chunk_texts = " ".join(c.content for c in chunks if hasattr(c, "content"))
-        xrefs = _extract_legal_references(chunk_texts)
+        # Only scan the PRIMARY chunks (top-5) for cross-references to avoid 100+ lookups
+        # on broad queries, which causes context bloat and generation speed issues.
+        primary_texts = " ".join(c.content for c in chunks[:5] if hasattr(c, "content"))
+        xrefs = _extract_legal_references(primary_texts)
         if xrefs:
             xref_added = 0
+            # Limit list of refs to investigate to avoid bloat
+            xrefs = xrefs[:15] 
+
             # Only dieu-level refs that are NOT already in our chunks' articles
             present_dieus = {
                 (c.metadata.get("doc_id", DEFAULT_REF_DOC_ID),

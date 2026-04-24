@@ -1,0 +1,56 @@
+{
+  "categories": [
+    {
+      "id": "simple_penalty",
+      "label": "Mức phạt đơn giản",
+      "description": "Câu hỏi chỉ 1 ý, về mức phạt/điểm trừ GPLX cho 1 hành vi cụ thể",
+      "target_count": 10,
+      "example": "Vượt đèn đỏ xe máy phạt bao nhiêu?"
+    },
+    {
+      "id": "multi_intent",
+      "label": "Đa ý",
+      "description": "Câu hỏi có 2+ ý riêng biệt, mỗi ý có thể nằm ở Điều/Khoản khác nhau",
+      "target_count": 10,
+      "example": "GPLX mới được áp dụng khi nào và có những hạng nào?"
+    },
+    {
+      "id": "cross_reference",
+      "label": "Tham chiếu chéo",
+      "description": "Câu hỏi yêu cầu giải quyết tham chiếu 'điểm X khoản Y' bên trong corpus",
+      "target_count": 10,
+      "example": "Điểm h khoản 14 Điều 32 Nghị định 168 quy định gì?"
+    },
+    {
+      "id": "procedure",
+      "label": "Thủ tục / Đăng kiểm",
+      "description": "Câu hỏi về trình tự, hồ sơ, chu kỳ đăng kiểm, cấp đổi GPLX",
+      "target_count": 10,
+      "example": "Chu kỳ đăng kiểm ô tô dưới 9 chỗ là bao lâu?"
+    },
+    {
+      "id": "out_of_scope",
+      "label": "Ngoài phạm vi (control)",
+      "description": "Câu hỏi KHÔNG liên quan giao thông VN — dùng để đo false-positive của router",
+      "target_count": 10,
+      "example": "Cách nấu phở bò ngon?"
+    }
+  ],
+  "total_target": 50,
+  "schema": {
+    "id": "string — unique",
+    "category": "string — id từ categories trên",
+    "question": "string — câu hỏi tiếng Việt",
+    "gold_answer": "string — câu trả lời ngắn gọn (1-3 câu) mô tả đáp án đúng",
+    "gold_citations": [
+      {
+        "doc_id": "string — vd '168/2024/NĐ-CP'",
+        "dieu": "int",
+        "khoan": "string | null",
+        "diem": "string | null"
+      }
+    ],
+    "expected_category": "legal_rag | chit_chat | web_legal_search | out_of_scope",
+    "notes": "string — ghi chú khi curate"
+  }
+}

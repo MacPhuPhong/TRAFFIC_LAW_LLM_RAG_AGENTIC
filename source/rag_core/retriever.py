@@ -29,11 +29,16 @@ VI_STOPWORDS = {
     "để", "sẽ", "đã", "nếu", "bị", "bởi",
 }
 
-DEFAULT_COLLECTION = "traffic_law_v2"
-DEFAULT_EMBEDDING_MODEL = "KeepItReal/vietnamese-sbert"
+DEFAULT_COLLECTION = "traffic_law_v3_e5"
+DEFAULT_EMBEDDING_MODEL = "intfloat/multilingual-e5-small"
 DEFAULT_JSONL = (
     Path(__file__).resolve().parent.parent.parent / "Data" / "all_chunks.jsonl"
 )
+
+
+def _e5_query_prefix(model_name: str) -> str:
+    # e5 family requires the "query: " prefix at encode time; other models don't.
+    return "query: " if "e5" in model_name.lower() else ""
 
 
 @dataclass
@@ -54,8 +59,8 @@ class RetrievedChunk:
 
 class TrafficHybridRetriever:
     """
-    Hybrid retriever combining Qdrant dense vectors (vietnamese-sbert) with
-    an in-process BM25 lexical index. Scores fused via Reciprocal Rank Fusion.
+    Hybrid retriever combining Qdrant dense vectors (multilingual-e5-small, 384d)
+    with an in-process BM25 lexical index. Scores fused via Reciprocal Rank Fusion.
 
     BM25 row index is aligned to Qdrant point id (JSONL insertion order), which
     is how the indexer upserted points — so no id-mapping layer is needed.
@@ -82,6 +87,7 @@ class TrafficHybridRetriever:
 
         logger.info(f"Loading embedding model: {embedding_model}")
         self.model = SentenceTransformer(embedding_model)
+        self._query_prefix = _e5_query_prefix(embedding_model)
 
         self._bm25_index: BM25Okapi | None = None
         self._payloads: list[dict] = []
@@ -135,7 +141,9 @@ class TrafficHybridRetriever:
             exclude_topics, exclude_doc_ids,
         )
 
-        query_vector = self.model.encode(query, normalize_embeddings=True).tolist()
+        query_vector = self.model.encode(
+            self._query_prefix + query, normalize_embeddings=True,
+        ).tolist()
         dense_hits = self.client.search(
             collection_name=self.collection_name,
             query_vector=query_vector,

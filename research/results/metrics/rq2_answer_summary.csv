@@ -1,0 +1,3 @@
+chunker,f1_token,rouge_l,cit_p_khoan,cit_r_khoan,cit_f1_khoan,cit_p_doc,cit_r_doc,cit_f1_doc,refusal,latency_s
+fixed_512,0.2539,0.2142,0.215,0.36,0.2272,0.62,0.64,0.6267,0.44,3.3546
+hierarchical,0.1832,0.1548,0.2222,0.44,0.2386,0.46,0.48,0.4667,0.56,2.9403

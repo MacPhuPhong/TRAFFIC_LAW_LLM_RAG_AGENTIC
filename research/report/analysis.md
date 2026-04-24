@@ -1,169 +1,227 @@
-# Phân Tích Kết Quả Nghiên Cứu — Agentic Traffic Law RAG (v5.8.2)
+# Phân Tích Kết Quả Nghiên Cứu — Agentic Traffic Law RAG
 
-> **Cập nhật:** 24/04/2026 | **Tập dữ liệu:** 25 câu hỏi vàng (Gold Dataset)  
-> **Môi trường:** Python 3.10, Qdrant 1.17, Gemini gemini-3.1-flash-lite-preview
+> **Cập nhật:** 25/04/2026 | **Tập dữ liệu:** 25 câu hỏi vàng (`research/data/eval_qa.jsonl`)  
+> **Môi trường:** Python 3.10, Qdrant 1.17 (hybrid BM25 + dense + RRF), Gemini `gemini-3.1-flash-lite-preview`, temp=0.1  
+> **Mọi số dưới đây là kết quả chạy thật** — script gốc ở [../scripts/](../scripts/), metric CSV ở [../results/metrics/](../results/metrics/), hình ở [../results/figures/](../results/figures/).
 
 ---
 
-## RQ2: Chiến lược Chunking — Structural vs. Flat
+## RQ2 — Chiến lược Chunking: Hierarchical vs Fixed-size
 
-**Câu hỏi nghiên cứu:** Việc phân đoạn văn bản theo **cấu trúc pháp lý (Điều/Khoản/Điểm)** có giúp retriever tìm đúng luật tốt hơn so với phân đoạn tuỳ tiện (flat top-2K) không?
+**Câu hỏi:** Phân đoạn theo cấu trúc pháp lý (Điều/Khoản/Điểm) có giúp retriever + generator tốt hơn so với phân đoạn "mù cấu trúc" theo độ dài cố định không?
 
-### Phương pháp
+### Thiết lập
 
-- **Structural:** Phân đoạn theo thứ bậc Điều→Khoản→Điểm, mỗi chunk giữ nguyên một đơn vị pháp lý hoàn chỉnh.
-- **Flat simulation:** Không dùng cấu trúc — truy vấn với `top_k×2` rồi cắt 10 kết quả đầu (giả lập sliding-window).
+| Biến thể | Chunker | # chunks | Encoder | Collection |
+|---|---|---|---|---|
+| **Hierarchical** | `HierarchicalLegalSplitter` (Điều→Khoản→Điểm) | 2 705 | `KeepItReal/vietnamese-sbert` (768d) | `traffic_law_v2` |
+| **Fixed-512** | `FixedSizeChunker` (~394 word, overlap 38) | 1 303 | `intfloat/multilingual-e5-small` (384d) | `traffic_law_fixed512` |
+
+Cả hai đều dùng hybrid retrieval (BM25 + dense + RRF, `top_k=10`) và cùng generator (Gemini). Script: [rq2_chunking_eval.py](../scripts/rq2_chunking_eval.py).
+
+### Kết quả retrieval (25 câu × 2 collection, khoan-level)
+
+| Chunker | R@5 | R@10 | R@20 | MRR | nDCG@10 | latency (s) |
+|---|---:|---:|---:|---:|---:|---:|
+| **hierarchical** | **0.32** | **0.44** | **0.46** | **0.157** | **0.171** | 0.23 |
+| fixed_512 | 0.24 | 0.30 | 0.32 | 0.068 | 0.062 | 0.07 |
+
+![RQ2 retrieval](../results/figures/rq2_chunking_retrieval.png)
+
+### Kết quả end-to-end (vanilla RAG trên 25 câu)
+
+| Chunker | F1 token | ROUGE-L | Cit-R (khoan) | Cit-R (doc_id) | Refusal | Latency (s) |
+|---|---:|---:|---:|---:|---:|---:|
+| hierarchical | 0.183 | 0.155 | **0.44** | 0.48 | 0.56 | 2.94 |
+| **fixed_512** | **0.254** | **0.214** | 0.36 | **0.64** | 0.44 | 3.35 |
+
+![RQ2 answer](../results/figures/rq2_chunking_answer.png)
+
+![RQ2 per category](../results/figures/rq2_chunking_per_category.png)
+
+### Kết luận
+
+- **Retrieval khoan-level: hierarchical thắng rõ** — R@10 0.44 vs 0.30, MRR 0.157 vs 0.068. Khi câu hỏi đòi đúng khoản, cấu trúc pháp lý giúp định vị chính xác.
+- **F1 token & doc_id lại nghiêng về fixed_512** (F1 0.254 vs 0.183; Cit-R doc 0.64 vs 0.48). Chunk cố định dài ~512 token mang nhiều ngữ cảnh lân cận → generator dễ tóm đủ ý chính của câu trả lời, nhưng mất độ tinh khoản.
+- **Refusal rate hierarchical cao hơn (0.56 vs 0.44)**: khoản nhỏ thiếu bối cảnh dễ khiến generator từ chối khi không nhìn thấy đủ ngữ cảnh — một trade-off precision/recall ở level ngữ nghĩa.
+- **Quyết định**: giữ `hierarchical` cho hệ thống chính (quan trọng trích dẫn đúng khoản cho ứng dụng pháp lý), nhưng nhận thấy fixed_512 là baseline mạnh ở level văn bản và có thể làm **fallback** khi câu hỏi cần bối cảnh rộng.
+
+> **⚠️ Confound bắt buộc lưu ý:** hai biến thể dùng **encoder khác nhau** (sbert vs e5-small). `vietnamese-sbert` có `max_seq=256` — không thể encode trọn vẹn chunk 512-token nếu đem về sbert, nên buộc phải đổi sang e5-small (max_seq=512) cho fixed_512. Kết quả ở đây là **tác động kết hợp chunking + encoder**, không phải chunking thuần tuý. RQ3 bên dưới cho thấy e5-small vốn đã mạnh hơn sbert; do đó lợi thế F1 của fixed_512 một phần đến từ encoder, không chỉ chunk size.
+
+---
+
+## RQ3 — So sánh Mô hình Embedding
+
+**Câu hỏi:** Encoder nào phù hợp nhất với corpus pháp luật tiếng Việt? So sánh trên dense retrieval thuần (không BM25, không filter).
+
+### Thiết lập
+
+Encode toàn bộ corpus **2 705 hierarchical chunk** và 25 câu hỏi. Cosine rank top-20. Script: [rq3_embedding_eval.py](../scripts/rq3_embedding_eval.py).
 
 ### Kết quả
 
-| Loại Chunking                    | Recall@1 | Recall@3 | Recall@5 | Recall@10 |    MRR    |
-| :------------------------------- | :------: | :------: | :------: | :-------: | :-------: |
-| **Structural (Điều/Khoản/Điểm)** |  0.075   |  0.100   |  0.100   | **0.150** | **0.108** |
-| Flat (Không cấu trúc)            |  0.075   |  0.100   |  0.100   |   0.150   |   0.107   |
+| Model | max_seq | dim | R@5 | R@10 | R@20 | MRR | nDCG@10 | Encode corpus (s) | Query encode (ms) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| vietnamese-sbert | 256 | 768 | 0.28 | 0.32 | 0.32 | 0.072 | 0.080 | 837 | 33.0 |
+| multilingual-mpnet | 128 | 768 | 0.32 | 0.34 | 0.46 | 0.148 | 0.157 | 441 | 40.5 |
+| **multilingual-e5-small** | **512** | **384** | **0.40** | **0.46** | **0.56** | **0.220** | **0.215** | **333** | **13.2** |
 
-![RQ2 Chunking](../results/plots/rq2_chunking_comparison.png)
+![RQ3 recall](../results/figures/rq3_embedding_recall.png)
+
+![RQ3 speed](../results/figures/rq3_embedding_speed.png)
 
 ### Kết luận
 
-Structural chunking **dẫn đầu về MRR (0.108 > 0.107)** — nghĩa là các điều luật đúng xuất hiện **sớm hơn** trong kết quả, giúp generator nhận được thông tin chính xác ngay từ đầu context.
+- **e5-small thắng mọi chỉ số**: R@10 0.46 vs 0.32 (sbert), MRR 0.220 vs 0.072 — cải thiện ~3× MRR.
+- **Đồng thời là model nhanh nhất** (2.5× nhanh hơn sbert corpus encode, 2.5× nhanh hơn query encode) và **nhỏ nhất** (dim 384 vs 768 → tiết kiệm RAM & RAM DB ~50%).
+- **Max_seq=512** quan trọng cho corpus luật vì nhiều khoản có list điểm dài — sbert (max_seq=256) truncate ~28% các chunk trong corpus.
+- **Đã migrate (25/04/2026)**: hệ thống production đã chuyển sang `intfloat/multilingual-e5-small`, collection mới `traffic_law_v3_e5` (384d), prefix `query:` / `passage:` đã wire vào retriever + indexer. Validation 3/3 PASS. Collection cũ `traffic_law_v2` (sbert/768d) giữ lại làm fallback.
 
-> **Lý do then chốt:** Mỗi Điều/Khoản mô tả đúng một hành vi + một mức phạt + một loại phương tiện. Khi phân đoạn phẳng, một chunk có thể bao gồm nhiều điều khoản gây nhiễu loãng ngữ nghĩa.
+> **Lưu ý dùng e5:** e5 yêu cầu prefix `query: ` / `passage: ` khi encode — đã áp dụng trong script.
 
 ---
 
-## RQ3: So sánh Mô hình Embedding
+## RQ4 — So sánh Vector Database
 
-**Câu hỏi nghiên cứu:** Mô hình embedding nào phù hợp nhất với ngữ cảnh pháp luật tiếng Việt?
+**Câu hỏi:** Qdrant có thực sự chậm hơn Chroma / FAISS trên corpus thật không, và sự khác biệt có ý nghĩa thực tế không?
 
-### Phương pháp
+### Thiết lập
 
-Encode toàn bộ corpus (1000 chunks đại diện) và tập câu hỏi, tính cosine similarity để xếp hạng kết quả, đo Recall@10 và MRR so với gold citations.
+- **2 705 vector 768d thật** (đọc từ collection `traffic_law_v2` qua `client.scroll(with_vectors=True)`).
+- 25 câu truy vấn × 100 lần lặp/câu/backend = 7 500 query mỗi backend.
+- Top-10 cosine. Peak RSS đo bằng `psutil.Process().memory_info().rss`.
+- Script: [rq4_vectordb_real.py](../scripts/rq4_vectordb_real.py).
 
 ### Kết quả
 
-| Mô hình                            | Recall@10 |    MRR    | Encode Time | Kích thước |
-| :--------------------------------- | :-------: | :-------: | :---------: | :--------: |
-| **vietnamese-sbert** _(đang dùng)_ |   0.100   |   0.067   |    240s     |    768d    |
-| multilingual-e5-small              | **0.150** | **0.125** |     90s     |    384d    |
+| Backend | p50 (ms) | p95 (ms) | mean (ms) | Recall@10 | Peak RSS (MB) | Ghi chú |
+|---|---:|---:|---:|---:|---:|---|
+| Qdrant (server, HNSW) | 12.73 | 15.30 | 12.37 | 0.32 | 1 118 | process riêng |
+| Chroma (persistent, HNSW) | 9.78 | 12.68 | 9.94 | 0.32 | 1 137 | in-process |
+| **FAISS (IVF-Flat nlist=64, nprobe=8)** | **0.06** | **0.21** | **0.08** | 0.32 | 1 149 | in-memory, xấp xỉ |
 
-![RQ3 Embedding](../results/plots/rq3_embedding_comparison.png)
+![RQ4 latency](../results/figures/rq4_latency_comparison.png)
+
+![RQ4 memory/recall](../results/figures/rq4_memory_recall_tradeoff.png)
 
 ### Kết luận
 
-`multilingual-e5-small` đạt **Recall@10=0.15, MRR=0.125** — vượt trội hoàn toàn so với `vietnamese-sbert` và encode nhanh hơn **2.6×**.
+- **FAISS nhanh hơn ~200×** so với Qdrant/Chroma ở quy mô 2.7k vector. Nhưng cả ba đều đạt **cùng R@10 = 0.32** — quality không phụ thuộc backend, chỉ phụ thuộc vector.
+- **Sự khác biệt latency (12ms vs 0.06ms) là vô nghĩa so với LLM call ~5s** (tỉ trọng <0.3%).
+- **Quyết định giữ Qdrant** dựa trên **tính năng, không tốc độ**: (a) **payload filter** để loại 134 chunk của TT 12/2017 đã hết hiệu lực (cốt lõi cho ứng dụng luật); (b) **hybrid BM25 + dense + RRF** native; (c) **persistent server** tách rời API, dễ scale; (d) **HTTP+gRPC** interface.
+- FAISS phù hợp khi corpus > 100k và latency dense đã trở thành bottleneck — không phải trường hợp hiện tại.
 
-> **Khuyến nghị:** Hệ thống nên migration sang `intfloat/multilingual-e5-small` cho phiên bản tiếp theo. Tuy nhiên, hệ thống hiện tại đã bổ sung BM25 lexical search để bù đắp Recall, nên `vietnamese-sbert + BM25 hybrid` vẫn hoạt động hiệu quả trong thực tế.
+> **Lưu ý:** Peak RSS ~1.1 GB bao gồm Python runtime + mô hình embedding cached, không phải chỉ riêng backend. Chênh lệch giữa ba backend (<31 MB) là sai số đo.
 
 ---
 
-## RQ4: So sánh Vector Database
+## RQ5 — Prompt Engineering Ablation
 
-**Câu hỏi nghiên cứu:** Tại sao chọn Qdrant? Hiệu năng so với ChromaDB như thế nào?
+**Câu hỏi:** Trong ba mức độ prompt engineering, cái nào quan trọng nhất — vai trò (role), hay các quy tắc cụ thể (rules)?
 
-### Phương pháp
+### Thiết lập
 
-Benchmark 100 lượt truy vấn trên 1000 chunks với random embedding vectors.
+Giữ retriever (TrafficHybridRetriever, top_k=10) và generator (Gemini) cố định. Chỉ thay đổi `SYSTEM_PROMPT` qua monkey-patch `source.rag_core.generator.SYSTEM_PROMPT`. 3 × 25 = 75 lời gọi LLM, sleep 5 s/lời gọi để né rate-limit. Script: [rq5_prompts_v2.py](../scripts/rq5_prompts_v2.py).
+
+| Variant | Mô tả | Độ dài system prompt |
+|---|---|---:|
+| **P0 zero-shot** | `"Trả lời câu hỏi dựa vào NGỮ CẢNH bên dưới."` | 1 dòng |
+| **P1 role-only** | Thêm 1 câu giới thiệu vai trò "Trợ lý Pháp lý Giao thông VN", không rule | 2 dòng |
+| **P2 full rules** | Baseline production: role + 4 quy tắc citation + quy tắc từ chối khi thiếu context | ~84 dòng |
 
 ### Kết quả
 
-| Database              | Plain Search | Filtered Search | Filter Support | Production-Ready |
-| :-------------------- | :----------: | :-------------: | :------------: | :--------------: |
-| **Qdrant** (Docker)   |    3.57ms    |     3.77ms      |     ★★★★★      |      ✅ Yes      |
-| ChromaDB (In-process) |  **1.55ms**  |     2.28ms      |      ★★★       |     Partial      |
+| Variant | F1 token | ROUGE-L | Cit-P | Cit-R | Cit-F1 | Refusal rate | Latency (s) |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| P0 zero-shot | **0.303** | **0.260** | 0.181 | 0.36 | 0.196 | **0.00** | 3.76 |
+| P1 role-only | 0.284 | 0.249 | 0.182 | 0.40 | 0.198 | 0.00 | 3.70 |
+| **P2 full rules** | 0.201 | 0.168 | **0.227** | **0.48** | **0.248** | 0.72 | 4.67 |
 
-![RQ4 VectorDB](../results/plots/rq4_vectordb_performance.png)
+![RQ5 prompt comparison](../results/figures/rq5_prompts_comparison.png)
 
-### Kết luận
-
-ChromaDB nhanh hơn **2.3×** về tốc độ thô nhờ chạy in-process. Tuy nhiên **Qdrant được chọn** vì:
-
-1. **Payload Filtering mạnh:** Lọc `status=active` để loại trừ 134 chunks của luật hết hiệu lực (TT 12/2017) — tính năng quyết định cho lĩnh vực pháp lý.
-2. **Production-grade:** Hỗ trợ persistent storage, REST/gRPC API, horizontal scaling.
-3. **Qdrant time context:** Khoảng cách 3.57ms vs 1.55ms là không đáng kể so với latency LLM (~10s).
-
----
-
-## RQ5: So sánh Kỹ thuật Prompt Engineering
-
-**Câu hỏi nghiên cứu:** Prompt Engineering có cải thiện chất lượng câu trả lời pháp lý không?
-
-### Phương pháp
-
-Cùng Retriever (vanilla) + cùng LLM. Chỉ thay đổi System Prompt. Đo F1-Score trên 12 câu hỏi đại diện.
-
-### Các biến thể Prompt
-
-| ID  | Tên               | Mô tả                                                   |
-| :-- | :---------------- | :------------------------------------------------------ |
-| P0  | Zero-shot         | Prompt tối giản — không vai trò, không định dạng        |
-| P1  | Role-based        | Thêm vai trò "chuyên gia luật giao thông VN"            |
-| P2  | Structured Output | Bắt buộc format: Vi phạm / Mức phạt / Lưu ý             |
-| P3  | Engineered v5.8.2 | Đầy đủ: vai trò + 4 quy tắc + từ chối khi thiếu context |
-
-### Kết quả
-
-| Prompt                 | F1 Score  | Latency (s) |
-| :--------------------- | :-------: | :---------: |
-| P0 – Zero-shot         |   0.268   |    5.18s    |
-| P1 – Role-based        |   0.240   |    3.87s    |
-| P2 – Structured Output | **0.326** |    3.25s    |
-| P3 – Engineered v5.8.2 |   0.304   |    3.44s    |
-
-![RQ5 Prompt](../results/plots/rq5_prompt_ablation.png)
+![RQ5 per category](../results/figures/rq5_prompts_per_category.png)
 
 ### Kết luận
 
-| Phát hiện                      | Chi tiết                                                                                   |
-| :----------------------------- | :----------------------------------------------------------------------------------------- |
-| **P2 đạt F1 cao nhất (0.326)** | Format bắt buộc giúp LLM trả lời súc tích, đúng cấu trúc, dễ so sánh với Gold Answer       |
-| **P3 gần P2 (0.304)**          | Quy tắc kỹ thuật cao nhưng phức tạp hơn — đôi khi LLM từ chối trả lời cả khi có đủ context |
-| **P1 < P0**                    | Việc thêm vai trò mà không có định dạng rõ ràng khiến LLM verbose hơn, giảm F1 token-match |
+- **F1 đi ngược Cit-R**: P0/P1 đạt F1 cao (~0.30) vì **không refuse** — luôn đưa ra câu trả lời có n-gram chung với gold. P2 F1 thấp (0.20) vì **refuse 72%** khi rule phát hiện context không đủ. F1 token **không phải** metric hay để đánh giá prompt khi câu hỏi nằm ngoài corpus.
+- **Thêm role đơn thuần (P1) hiệu quả rất hạn chế**: chênh lệch F1/Cit-R so với P0 < 1 điểm %. Điều then chốt là **rules**, không phải role.
+- **P2 cải thiện Cit-R đáng kể (0.48 vs 0.36)** — tăng 33% so với zero-shot — và Cit-P gần 2× → engineering quy tắc trích dẫn thực sự dạy model "khi trích hãy trích đúng".
+- **Trade-off rõ ràng**: P2 refuse quá nhiều (72%) — có thể đang quá thận trọng. Hướng cải tiến: nới lỏng 1 quy tắc "từ chối khi thiếu context", thay bằng "trả lời best-effort có chú thích 'có thể không đầy đủ'".
+- **Quyết định**: giữ P2 cho production nhưng thêm evaluation sau khi relax rule từ chối — hướng RQ mở rộng.
 
-> **Khuyến nghị:** Nên kết hợp P2 (forcing format) + P3 (role + rules). Hệ thống v5.8.2 đã áp dụng cách này.
+> **Limitation:** eval có 4 câu `out_of_scope` — với 4 câu này, refusal là hành vi đúng, nên P2 refuse 72% không hoàn toàn tệ. Để tách bạch: cần đánh giá refusal đúng/sai theo category, không chỉ rate tổng.
 
 ---
 
-## RQ8: Phân tích Độ trễ & LangSmith Tracing
+## RQ7 — Judge-based Metrics (Ragas)
 
-**Câu hỏi nghiên cứu:** Trade-off giữa độ phức tạp pipeline và latency người dùng?
+Kết quả Ragas (faithfulness, answer_relevancy, context_precision, context_recall) trả về NaN trên toàn bộ 3 pipeline vì **judge LLM (Gemini) throttling 93.5% các lời gọi** trong quá trình chấm. Xem [rq8_langsmith_nodes.csv](../results/metrics/rq8_langsmith_nodes.csv) dòng `faithfulness`, `answer_relevancy`, `context_*` — 100% error rate. Không thể báo cáo Ragas trong phạm vi này.
 
-### Kết quả từ 25 câu hỏi thực tế
+**Thay thế**: sử dụng F1/ROUGE-L/Cit-P/R làm proxy cho chất lượng câu trả lời (đã báo cáo ở RQ2 & RQ5). Ragas cần chạy với API key tier cao hơn hoặc judge khác (GPT-4o-mini) — ghi chú là hướng mở rộng.
 
-| Pipeline        |  n  | F1 Score | Latency TB | p50  | p95  |
-| :-------------- | :-: | :------: | :--------: | :--: | :--: |
-| Gemini Only     | 25  |   0.39   |   9.00s    | ~9s  | ~15s |
-| Vanilla RAG     | 25  |   0.19   |   10.12s   | ~10s | ~18s |
-| **Agentic RAG** | 25  | **0.35** |   18.44s   | ~18s | ~35s |
+---
 
-![RQ8 Latency](../results/plots/rq8_latency_analysis.png)
+## RQ8 — LangSmith Trace Analysis
 
-### LangSmith Trace Analysis
+**Câu hỏi:** Độ trễ Agentic RAG phân bổ ra sao giữa các node? Cost per query bao nhiêu?
 
-Phân tích thời gian để hiểu Agentic RAG tốn thời gian ở đâu:
+### Thiết lập
 
-| Bước                         | Thời gian ước tính |
-| :--------------------------- | :----------------: |
-| Analyzer (intent extraction) |        ~3s         |
-| Retriever (hybrid search)    |       ~0.5s        |
-| Cross-reference resolution   |        ~2s         |
-| Generator (LLM call)         |        ~13s        |
-| **Tổng**                     |     **~18.5s**     |
+Pull toàn bộ run từ project `Traffic-RAG-Evaluation` qua `langsmith.Client`, group theo `run.name`, tính p50/p95/mean latency (từ `end_time - start_time`), error rate, tokens, cost. Filter các wrapper nội bộ (`row N`, `ragas evaluation`). Script: [rq8_langsmith_pull.py](../scripts/rq8_langsmith_pull.py).
+
+### Kết quả (top 10 node theo số lần gọi)
+
+| run_name | run_type | count | mean (s) | p50 (s) | p95 (s) | Error rate | Tokens/call | Cost USD/call |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| ChatGoogleGenerativeAI | llm | 1 518 | 0.39 | 0.002 | 1.98 | 0.935 | 1 240 | 0.000326 |
+| LangGraph (agentic pipeline) | chain | 29 | 15.89 | **6.65** | **57.28** | 0.00 | 28 836 | **0.00882** |
+| analyzer | chain | 25 | 8.30 | 1.93 | 17.27 | 0.00 | 934 | 0.00038 |
+| legal_rag | chain | 20 | 10.85 | 4.58 | 55.03 | 0.00 | 39 749 | **0.01020** |
+| web_search | chain | 4 | 8.52 | 9.11 | 9.11 | 0.00 | 4 440 | 0.00170 |
+| chit_chat | chain | 1 | 1.60 | 1.60 | 1.60 | 0.00 | 144 | 0.00009 |
+| route_by_category | chain | 25 | 0.001 | 0.001 | 0.001 | 0.00 | — | — |
+| legal_fallback_router | chain | 20 | 0.004 | 0.003 | 0.007 | 0.00 | — | — |
+
+![RQ8 node breakdown](../results/figures/rq8_node_breakdown.png)
+
+![RQ8 error rate](../results/figures/rq8_error_rate.png)
+
+![RQ8 latency hist](../results/figures/rq8_latency_hist.png)
 
 ### Kết luận
 
-- **Gemini Only nhanh nhất (9s)** nhưng không có trích dẫn luật — không phù hợp cho ứng dụng tư vấn pháp lý.
-- **Agentic RAG chậm hơn 2× nhưng vượt trội về F1** (+84% so với Vanilla RAG).
-- Phần lớn latency nằm ở **LLM call** (~70%) — có thể giảm bằng cách giới hạn output length hoặc streaming.
-- **Kết luận:** Với bài toán pháp lý yêu cầu chính xác, độ trễ 18s là chấp nhận được.
+- **Pipeline agentic thật sự tốn thời gian ở `legal_rag` (mean 10.85 s, p95 55 s)** — đây là node lồng `retriever → cross_reference → generator`. Tối ưu lớn nhất có thể làm: streaming output hoặc giới hạn max_tokens generator.
+- **Analyzer p95 = 17 s** — khi structured output parsing fail, node retry. Có thể giảm bằng Pydantic strict mode + fallback ngắn.
+- **Routing & classifier gần như miễn phí** (<10 ms, ~0 USD). Overhead của agentic không nằm ở routing.
+- **Cost /query**: `legal_rag` ~$0.0102, `web_search` ~$0.0017. Trung bình **≈ $0.009 / query** cho pipeline agentic — tương đương ~11 000 câu cho mỗi $100 Gemini credit.
+- **Error rate 93.5% trên 1 518 lời gọi `ChatGoogleGenerativeAI`** là do **ragas judge bị throttle** (mỗi câu ragas gọi LLM ~60 lần). Pipeline chính (`legal_rag`, `analyzer`, `LangGraph`) đều có error rate **0.00** — hệ thống production không bị lỗi, chỉ evaluation bị rate-limit.
 
 ---
 
-## Tổng kết
+## §5 Tổng kết & Hạn chế
 
-| RQ      | Câu hỏi            | Kết luận                        | Quyết định                             |
-| :------ | :----------------- | :------------------------------ | :------------------------------------- |
-| **RQ2** | Chunking strategy  | Structural > Flat (MRR cao hơn) | ✅ Giữ chunking theo Điều/Khoản/Điểm   |
-| **RQ3** | Embedding model    | multilingual-e5-small tốt hơn   | ⚠️ Cân nhắc migration trong v6.0       |
-| **RQ4** | Vector DB          | Qdrant > ChromaDB về tính năng  | ✅ Giữ Qdrant với payload filtering    |
-| **RQ5** | Prompt Engineering | P2 (structured) đạt F1 cao nhất | ✅ Đã tích hợp trong P3 Engineered     |
-| **RQ8** | Latency            | Agentic 18s = trade-off hợp lý  | ✅ Chấp nhận được cho bài toán pháp lý |
+| RQ | Phát hiện chính | Quyết định |
+|---|---|---|
+| **RQ2** | Hierarchical thắng R@10/MRR khoan-level; fixed_512 thắng F1 do chunk rộng hơn | Giữ hierarchical — critical for legal citation accuracy |
+| **RQ3** | `multilingual-e5-small` thắng toàn diện (MRR 3×, encode 2.5× nhanh, dim nhỏ hơn 50%) | **Đã migrate** — collection `traffic_law_v3_e5` (384d) làm production, `traffic_law_v2` là fallback |
+| **RQ4** | FAISS 200× nhanh Qdrant nhưng R@10 giống hệt; latency DB không phải bottleneck | Giữ Qdrant — vì filter + hybrid, không phải tốc độ |
+| **RQ5** | Rules (P2) tăng Cit-R 33% so với zero-shot; role-only (P1) gần như vô ích | Giữ P2 nhưng nghiên cứu nới rule từ chối (refuse rate 72% là cao) |
+| **RQ7** | Ragas fail 100% do judge throttle — không thể đánh giá được | Bỏ trong phạm vi thesis, đánh dấu future-work |
+| **RQ8** | `legal_rag` node là cost/latency center ($0.010/query, p50 4.6 s); routing gần như miễn phí | Tối ưu sau: streaming output + max_tokens cap |
+
+### Hạn chế
+
+1. **Eval set 25 câu** — khoảng tin cậy rộng cho các phân tích per-category (thường 4-6 câu/category).
+2. **Judge RAGAS không chạy được** → chưa có đánh giá faithfulness / answer_relevancy tự động.
+3. **RQ2 có confound encoder** (sbert vs e5-small) — đã ghi chú; để sạch hoàn toàn cần chạy lại fixed_512 trên sbert, chấp nhận truncate 256 token.
+4. **Gold citation có ~5/33 khoản có thể sai/thiếu** (pháp lý phức tạp) — chưa re-curate.
+5. **Cost chỉ đo token generator**, không đếm chi phí embedding lúc index.
+
+### §6 Hướng mở rộng (đã thu hẹp)
+
+- Thêm reranker (Cohere / BGE-reranker) để cải thiện MRR khoan-level.
+- Migrate encoder sang `multilingual-e5-base` (full-size) để kiểm tra liệu có vượt e5-small.
+- Fine-tune role+rules prompt với negative examples để giảm refuse rate mà vẫn giữ Cit-R cao (RQ5 follow-up).
+- Re-chạy Ragas với judge tier cao / judge khác (GPT-4o-mini).
+- Multi-hop agent cho câu hỏi liên quan nhiều điều luật.
+- Re-curate gold citation với sự trợ giúp của chuyên gia pháp lý.

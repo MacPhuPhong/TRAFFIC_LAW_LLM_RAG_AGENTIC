@@ -33,7 +33,7 @@ graph TD
     A["PDF Luật / NĐ / TT"] --> B["Data Ingestion<br>pdfplumber + regex NFC"]
     B --> C["Semantic Chunker<br>Hierarchical 3-Level<br>(Điều → Khoản → Điểm)"]
     C --> D["all_chunks.jsonl<br>2.705 chunks"]
-    D --> E["Vector Indexing<br>vietnamese-sbert 768d → Qdrant (Cosine)"]
+    D --> E["Vector Indexing<br>multilingual-e5-small 384d → Qdrant (Cosine)"]
     D --> F["BM25 Corpus<br>rank_bm25 · Vietnamese stopwords"]
 
     G["User Query"] --> H["FastAPI /chat"]
@@ -66,7 +66,7 @@ graph TD
 | Ingestion            | PDF extraction       | `pdfplumber`                                                                  | Trích text + bảng (bbox-aware)              |
 | Ingestion            | Cleaning             | `regex` + `unicodedata` (NFC)                                                 | Khử nhiễu, chuẩn hoá                        |
 | Chunking             | Splitter             | [HierarchicalLegalSplitter](traffic_rag/source/ingestion/semantic_chunker.py) | 3-tier: Điều → Khoản → Điểm                 |
-| Embedding            | Encoder              | `KeepItReal/vietnamese-sbert` (PhoBERT-based SBERT)                           | 768-d sentence embedding                    |
+| Embedding            | Encoder              | `intfloat/multilingual-e5-small` (XLM-RoBERTa-based, contrastive)              | 384-d sentence embedding (max_seq=512)      |
 | Vector DB            | Storage              | `Qdrant` (Docker, gRPC :6334)                                                 | Cosine search + payload filter              |
 | Lexical              | Sparse               | `rank_bm25.BM25Okapi`                                                         | In-memory BM25 index                        |
 | Fusion               | Ranker               | Reciprocal Rank Fusion (RRF, k=60)                                            | Kết hợp dense + sparse                      |
@@ -86,8 +86,8 @@ graph TD
 | Tổng văn bản pháp luật     | 20+ (Luật/NĐ/TT)                    | Thủ công curate                                                                |
 | Tổng chunks sau xử lý      | **2.705**                           | Log uvicorn `BM25 corpus built: 2705 docs`                                     |
 | Tổng token corpus          | 424.677                             | `BM25 corpus built: ... 424677 tokens`                                         |
-| Embedding dim              | 768                                 | vietnamese-sbert                                                               |
-| Qdrant collection          | `traffic_law_v2`                    | [retriever.py:32](traffic_rag/source/rag_core/retriever.py#L32)                |
+| Embedding dim              | 384                                 | multilingual-e5-small                                                          |
+| Qdrant collection          | `traffic_law_v3_e5`                 | [retriever.py:32](traffic_rag/source/rag_core/retriever.py#L32)                |
 | `top_k` default            | **10**                              | [nodes.py:176](traffic_rag/source/agent/nodes.py#L176)                         |
 | `top_k` broad queries      | **20**                              | [nodes.py:177](traffic_rag/source/agent/nodes.py#L177)                         |
 | `candidates_per_retriever` | 30                                  | [retriever.py:72](traffic_rag/source/rag_core/retriever.py#L72)                |
@@ -343,52 +343,77 @@ token_estimate: 245
 
 ## 4. Giai đoạn 3 — Vector Embedding & Indexing (toán học chuyên sâu)
 
-### 4.1 Mô hình Embedding: vietnamese-sbert
+### 4.1 Mô hình Embedding: multilingual-e5-small
 
-- **Model HF:** `KeepItReal/vietnamese-sbert`
-- **Kiến trúc nền:** Sentence-BERT (SBERT) trên PhoBERT-base
-- **Dim:** 768 · **Ngôn ngữ:** tiếng Việt
+- **Model HF:** `intfloat/multilingual-e5-small`
+- **Kiến trúc nền:** XLM-RoBERTa-base (12 layers, 384 hidden) — fine-tune contrastive trên ~1 tỷ cặp văn bản đa ngôn ngữ.
+- **Dim:** 384 · **Max seq length:** 512 · **Ngôn ngữ:** ~100 ngôn ngữ (có tiếng Việt trong corpus pretrain).
 
-#### 4.1.1 SBERT — sentence embedding từ BERT
+> **Lý do thay thế `vietnamese-sbert` (từ v5.8.2 → v6.0):** benchmark nội bộ ([RQ3 ablation](../research/report/analysis.md#rq3--so-sánh-mô-hình-embedding)) cho thấy `multilingual-e5-small` đạt **MRR 0.220 vs 0.072 (~3×)**, **Recall@10 0.46 vs 0.32**, đồng thời **encode nhanh 2.5×** và **giảm 50% chiều vector** (384 vs 768) → tiết kiệm RAM Qdrant, tốc độ search cao hơn. Cũng quan trọng: `max_seq=512` (so với 256 của sbert) không truncate các khoản dài nhiều điểm.
 
-```
-Input Text → [CLS] t₁ t₂ … tₙ [SEP]
-                     ↓
-       BERT Encoder (12 layers, 768 hidden)
-                     ↓
-            Hidden states: h₁, h₂, …, hₙ ∈ ℝ⁷⁶⁸
-                     ↓
-                 Mean Pooling
-                     ↓
-              Sentence embedding e ∈ ℝ⁷⁶⁸
-```
-
-**Mean Pooling:**
-
-$$\mathbf{e} = \frac{1}{n}\sum_{i=1}^{n}\mathbf{h}_i,\quad \mathbf{h}_i\in\mathbb{R}^{768}$$
-
-#### 4.1.2 Siamese Network — cách SBERT được train
+#### 4.1.1 E5 — contrastive sentence embedding
 
 ```
-Sentence A → BERT → e_A ─┐
-                          ├─ cos(e_A, e_B) → contrastive loss
-Sentence B → BERT → e_B ─┘
-  (shared weights)
+Input Text (prefix: "query: " | "passage: ")
+             ↓
+   XLM-RoBERTa Encoder (12 layers, 384 hidden)
+             ↓
+        Hidden states: h₁, h₂, …, hₙ ∈ ℝ³⁸⁴
+             ↓
+             Mean Pooling
+             ↓
+        Sentence embedding e ∈ ℝ³⁸⁴
+             ↓
+        L2 Normalize → ê ∈ S³⁸³ (sphere)
 ```
 
-**Contrastive Loss** cho cặp $(A,B)$ với nhãn $y\in\{0,1\}$ (1 = cùng nghĩa):
+**Mean Pooling trên token thường (không dùng CLS):**
 
-$$\mathcal{L} = y\cdot\max(0, \epsilon^{+} - \cos(\mathbf{e}_A, \mathbf{e}_B)) + (1-y)\cdot\max(0, \cos(\mathbf{e}_A, \mathbf{e}_B) - \epsilon^{-})$$
+$$\mathbf{e} = \frac{\sum_{i=1}^{n}m_i\cdot\mathbf{h}_i}{\sum_{i=1}^{n}m_i},\quad \mathbf{h}_i\in\mathbb{R}^{384},\ m_i\in\{0,1\}\ \text{(attention mask)}$$
 
-#### 4.1.3 Vietnamese-SBERT ghép 2 tầng
+#### 4.1.2 Task-specific Prefix — đặc điểm then chốt của E5
 
-1. **PhoBERT** (VinAI, 2020): BERT pre-train trên 20 GB corpus tiếng Việt.
-2. **Fine-tune SBERT**: huấn luyện thêm trên cặp câu VI tương đồng/khác biệt (NLI, STS).
-3. **Output**: câu/đoạn → vector 768-d trong không gian ngữ nghĩa.
+Khác SBERT, E5 **bắt buộc** gắn prefix vào input:
+
+| Vai trò đoạn văn | Prefix áp dụng | Khi nào |
+|---|---|---|
+| Câu truy vấn (ngắn, có mục đích hỏi) | `"query: "` | Lúc gọi `retriever.retrieve(q)` |
+| Đoạn văn bản trong corpus | `"passage: "` | Lúc indexer embed từng chunk |
+
+Tại sao cần? Trong giai đoạn fine-tune, E5 học phân biệt 2 role này bằng contrastive loss bất đối xứng. Bỏ prefix → model rơi vào "neutral mode" → mất ~5–10% recall.
+
+Code tương ứng:
+- [retriever.py](traffic_rag/source/rag_core/retriever.py): helper `_e5_query_prefix(model_name)` tự động thêm `"query: "` nếu tên model chứa `e5`.
+- [indexer.py](traffic_rag/source/indexing/indexer.py): hằng `PASSAGE_PREFIX` tự kích hoạt, gắn vào mỗi chunk trước khi `model.encode(...)`.
+
+#### 4.1.3 Contrastive Training — cách E5 được train
+
+E5 train theo InfoNCE loss với hàng trăm triệu cặp văn bản (query, positive passage) từ CC-News, Wikipedia, Reddit, S2ORC, Common Crawl, v.v. — trên 100+ ngôn ngữ.
+
+$$\mathcal{L}_{\text{InfoNCE}} = -\log\frac{\exp(\text{sim}(\mathbf{q},\mathbf{d}^{+})/\tau)}{\exp(\text{sim}(\mathbf{q},\mathbf{d}^{+})/\tau) + \sum_{j}\exp(\text{sim}(\mathbf{q},\mathbf{d}_{j}^{-})/\tau)}$$
+
+trong đó $\mathbf{d}^{+}$ là positive passage khớp với query, $\mathbf{d}_{j}^{-}$ là negatives (in-batch + hard negatives khai thác từ BM25), $\tau$ là temperature (~0.01).
+
+Vì InfoNCE **tối ưu cosine similarity trực tiếp**, vector đầu ra đã "chuẩn hoá sẵn theo hướng" để dùng với cosine — rất hợp với Qdrant `Distance.COSINE`.
+
+#### 4.1.4 So sánh nhanh với vietnamese-sbert (baseline cũ)
+
+| Chỉ số | vietnamese-sbert (v5.8) | **multilingual-e5-small (v6)** |
+|---|---:|---:|
+| HF repo | `KeepItReal/vietnamese-sbert` | `intfloat/multilingual-e5-small` |
+| Backbone | PhoBERT-base | XLM-RoBERTa-base |
+| Dim | 768 | **384** |
+| Max seq | 256 | **512** |
+| MRR (25-query gold) | 0.072 | **0.220** (≈3×) |
+| Recall@10 | 0.32 | **0.46** |
+| Corpus encode (2.705 chunks, CPU) | 837 s | **333 s** (2.5× nhanh) |
+| Query encode | 33 ms | **13 ms** |
+
+Kết quả benchmark chi tiết: [research/report/analysis.md §RQ3](../research/report/analysis.md#rq3--so-sánh-mô-hình-embedding).
 
 ### 4.2 Cosine Similarity — thước đo tương đồng
 
-$$\text{sim}(\mathbf{q},\mathbf{d}) = \cos\theta = \frac{\mathbf{q}\cdot\mathbf{d}}{\|\mathbf{q}\|\cdot\|\mathbf{d}\|} = \frac{\sum_{i=1}^{768} q_i d_i}{\sqrt{\sum q_i^2}\cdot\sqrt{\sum d_i^2}}\in[-1,1]$$
+$$\text{sim}(\mathbf{q},\mathbf{d}) = \cos\theta = \frac{\mathbf{q}\cdot\mathbf{d}}{\|\mathbf{q}\|\cdot\|\mathbf{d}\|} = \frac{\sum_{i=1}^{384} q_i d_i}{\sqrt{\sum q_i^2}\cdot\sqrt{\sum d_i^2}}\in[-1,1]$$
 
 > [!TIP]
 > **Tại sao Cosine thay vì Euclidean?** Cosine đo **hướng** vector, không đo **độ lớn**. Hai câu cùng nghĩa nhưng khác độ dài sẽ cùng hướng vector → cosine cao. Euclidean bị chi phối bởi độ lớn — không phù hợp cho text embedding.
@@ -399,7 +424,7 @@ $$\hat{\mathbf{e}} = \frac{\mathbf{e}}{\|\mathbf{e}\|_2},\quad \|\hat{\mathbf{e}
 
 Khi đã chuẩn hoá, cosine đơn giản thành **dot product**:
 
-$$\text{sim}(\hat{\mathbf{q}},\hat{\mathbf{d}}) = \hat{\mathbf{q}}\cdot\hat{\mathbf{d}} = \sum_{i=1}^{768}\hat{q}_i\hat{d}_i$$
+$$\text{sim}(\hat{\mathbf{q}},\hat{\mathbf{d}}) = \hat{\mathbf{q}}\cdot\hat{\mathbf{d}} = \sum_{i=1}^{384}\hat{q}_i\hat{d}_i$$
 
 → Giảm chi phí từ $O(3d)$ (tính 2 norm + dot) xuống $O(d)$ tại thời điểm query — nhân lên với hàng nghìn document là tối ưu đáng kể.
 
@@ -409,14 +434,14 @@ File: [source/indexing/indexer.py](traffic_rag/source/indexing/indexer.py)
 
 ```python
 client.create_collection(
-    collection_name="traffic_law_v2",
-    vectors_config=VectorParams(size=768, distance=Distance.COSINE),
+    collection_name="traffic_law_v3_e5",
+    vectors_config=VectorParams(size=384, distance=Distance.COSINE),
 )
 
 # Payload index cho metadata filtering (O(1) lookup trên keyword field)
 for field in ["doc_id", "status", "effective_date", "topic"]:
     client.create_payload_index(
-        collection_name="traffic_law_v2",
+        collection_name="traffic_law_v3_e5",
         field_name=field,
         field_schema=PayloadSchemaType.KEYWORD,
     )
@@ -428,18 +453,19 @@ for field in ["doc_id", "status", "effective_date", "topic"]:
 # 1. Đọc JSONL
 chunks = [json.loads(line) for line in open(JSONL_PATH)]
 
-# 2. Batch embed (64 texts/batch trên CPU)
-for i in range(0, total, BATCH_EMBED):           # BATCH_EMBED = 64
+# 2. Batch embed (64 texts/batch trên CPU) — LƯU Ý prefix "passage: " cho E5
+texts = [PASSAGE_PREFIX + c["content"] for c in chunks]    # PASSAGE_PREFIX = "passage: "
+for i in range(0, total, BATCH_EMBED):                     # BATCH_EMBED = 64
     vecs = model.encode(texts[i:i+BATCH_EMBED], normalize_embeddings=True)
     all_vectors.extend(vecs.tolist())
 
 # 3. Batch upsert (100 points/batch)
-for i in range(0, total, BATCH_UPSERT):          # BATCH_UPSERT = 100
+for i in range(0, total, BATCH_UPSERT):                    # BATCH_UPSERT = 100
     points = [
         PointStruct(id=j, vector=all_vectors[j], payload={**metadata, "content": …})
         for j in range(i, min(i + BATCH_UPSERT, total))
     ]
-    client.upsert(collection_name="traffic_law_v2", points=points)
+    client.upsert(collection_name="traffic_law_v3_e5", points=points)
 ```
 
 > [!NOTE]
@@ -455,7 +481,7 @@ File: [source/rag_core/retriever.py](traffic_rag/source/rag_core/retriever.py)
 
 ```mermaid
 graph LR
-    Q["Query"] --> D["Dense search<br>Qdrant + vietnamese-sbert"]
+    Q["Query"] --> D["Dense search<br>Qdrant + multilingual-e5-small"]
     Q --> B["Sparse search<br>BM25Okapi"]
     D -->|top-30| R["RRF Fusion<br>k=60"]
     B -->|top-30| R
@@ -469,9 +495,10 @@ graph LR
 ### 5.2 Dense retrieval
 
 ```python
-query_vector = model.encode(query, normalize_embeddings=True).tolist()
+# E5 bắt buộc prefix "query: " ở phía query-side
+query_vector = model.encode("query: " + query, normalize_embeddings=True).tolist()
 dense_hits = client.search(
-    collection_name="traffic_law_v2",
+    collection_name="traffic_law_v3_e5",
     query_vector=query_vector,
     query_filter=qdrant_filter,           # lọc theo status/topic/doc_id
     limit=30,                             # candidates_per_retriever
@@ -494,7 +521,7 @@ với:
 $$\text{IDF}(q_i) = \ln\!\left(\frac{N - n(q_i) + 0.5}{n(q_i) + 0.5} + 1\right)$$
 
 > [!TIP]
-> **Tại sao cần BM25 bên cạnh Dense?** Dense (SBERT) giỏi bắt **ngữ nghĩa** ("vượt đèn đỏ" ↔ "không chấp hành tín hiệu đèn giao thông"). BM25 giỏi bắt **token hiếm chính xác** ("168/2024/NĐ-CP", "Điều 6 Khoản 9"). Kết hợp cả hai cho **recall + precision** tối ưu trên truy vấn luật — nơi cả cụm từ pháp lý chính xác lẫn diễn đạt dân dã đều phổ biến.
+> **Tại sao cần BM25 bên cạnh Dense?** Dense (E5) giỏi bắt **ngữ nghĩa** ("vượt đèn đỏ" ↔ "không chấp hành tín hiệu đèn giao thông"). BM25 giỏi bắt **token hiếm chính xác** ("168/2024/NĐ-CP", "Điều 6 Khoản 9"). Kết hợp cả hai cho **recall + precision** tối ưu trên truy vấn luật — nơi cả cụm từ pháp lý chính xác lẫn diễn đạt dân dã đều phổ biến.
 
 #### 5.3.2 Tokenization tiếng Việt
 
@@ -941,7 +968,7 @@ Sources được lưu vào history → analyzer ở turn sau resolve được th
 async def lifespan(app):
     _load_dotenv_if_present()                               # .env (GOOGLE_API_KEY, TAVILY_API_KEY)
     _validate_env()                                         # fail fast nếu thiếu key
-    retriever = TrafficHybridRetriever()                    # load SBERT + BM25 corpus (~15s)
+    retriever = TrafficHybridRetriever()                    # load E5 encoder + BM25 corpus (~10s)
     generator = LegalAnswerGenerator(provider="google", model="gemini-3.1-flash-lite-preview")
     llm       = ChatGoogleGenerativeAI(model=..., temperature=0.1)
     tavily    = TavilySearchTool()
@@ -1027,7 +1054,7 @@ API_KEY=...                                             # alias cũ, auto-map �
 | Tổng văn bản pháp luật           | 20+ (Luật/NĐ/TT)                         |
 | Tổng chunks sau xử lý            | **2.705**                                |
 | Tổng token corpus (BM25)         | 424.677                                  |
-| Embedding dimension              | 768                                      |
+| Embedding dimension              | 384                                      |
 | Retrieval top-k                  | 10 (default) / 20 (broad query)          |
 | Candidates per retriever         | 30                                       |
 | RRF `k`                          | 60                                       |
@@ -1045,7 +1072,7 @@ API_KEY=...                                             # alias cũ, auto-map �
 
 | Giai đoạn                                       | Thời gian điển hình |
 | ----------------------------------------------- | ------------------- |
-| Retriever init (SBERT load + BM25 corpus build) | ~10–15 s cold start |
+| Retriever init (E5 load + BM25 corpus build)    | ~8–12 s cold start  |
 | `_tokenize_vi` + BM25 score (2705 docs)         | ~50 ms              |
 | Qdrant dense search (top-30)                    | ~30 ms              |
 | RRF fuse + sibling enrich                       | ~5 ms               |

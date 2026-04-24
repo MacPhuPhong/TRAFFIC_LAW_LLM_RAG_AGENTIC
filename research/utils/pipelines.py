@@ -101,10 +101,20 @@ class VanillaRAGPipeline:
         self,
         top_k: int = 10,
         model: str = "gemini-3.1-flash-lite-preview",
+        collection_name: str | None = None,
+        jsonl_path: str | None = None,
+        embedding_model: str | None = None,
     ):
         from source.rag_core import LegalAnswerGenerator, TrafficHybridRetriever
 
-        self.retriever = TrafficHybridRetriever()
+        kwargs = {}
+        if collection_name:
+            kwargs["collection_name"] = collection_name
+        if jsonl_path:
+            kwargs["jsonl_path"] = jsonl_path
+        if embedding_model:
+            kwargs["embedding_model"] = embedding_model
+        self.retriever = TrafficHybridRetriever(**kwargs)
         self.generator = LegalAnswerGenerator(provider="google", model=model)
         self.top_k = top_k
 
@@ -203,10 +213,21 @@ class AgenticRAGPipeline:
 # Convenience registry
 # ---------------------------------------------------------------------------
 
+def _vanilla_fixed512(**kwargs):
+    defaults = dict(
+        collection_name="traffic_law_fixed512",
+        jsonl_path="/media/pphong/D:/Do_An_Tot_Nghiep/GitHub1/traffic_rag/Data/all_chunks_fixed512.jsonl",
+        embedding_model="intfloat/multilingual-e5-small",
+    )
+    defaults.update(kwargs)
+    return VanillaRAGPipeline(**defaults)
+
+
 PIPELINE_REGISTRY = {
     "gemini_only": GeminiOnlyPipeline,
     "vanilla_rag": VanillaRAGPipeline,
     "agentic_rag": AgenticRAGPipeline,
+    "vanilla_rag_fixed512": _vanilla_fixed512,
 }
 
 

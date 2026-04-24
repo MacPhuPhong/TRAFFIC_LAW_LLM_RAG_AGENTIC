@@ -1,0 +1,137 @@
+chunker,qid,category,latency_s,f1_token,rouge_l,cit_p_khoan,cit_r_khoan,cit_f1_khoan,cit_p_doc,cit_r_doc,cit_f1_doc,refusal,pred_answer
+hierarchical,RQ-001,simple_penalty,3.4724143799976446,0.07272727272727272,0.0328133405056482,0.0,0.0,0.0,0.0,0.0,0.0,True,Thông tin này không có trong tài liệu được cung cấp.
+hierarchical,RQ-002,simple_penalty,2.4067856589972507,0.7972027972027973,0.5632102272727272,0.03125,1.0,0.06060606060606061,1.0,1.0,1.0,False,"Phạt tiền từ 6.000.000 đồng đến 8.000.000 đồng và bị trừ 06 điểm giấy phép lái xe đối với hành vi điều khiển xe ô tô trên đường mà trong máu hoặc hơi thở có nồng độ cồn nhưng chưa vượt quá 50 miligam/100 mililít máu hoặc chưa vượt quá 0,25 miligam/1 lít khí thở [Điều 6, Khoản 6, Điểm c — NĐ 168/2024/NĐ-CP] [Điều 6, Khoản 16, Điểm c — NĐ 168/2024/NĐ-CP]."
+hierarchical,RQ-003,simple_penalty,4.220285741001135,0.19656019656019655,0.22986340084785678,0.029411764705882353,1.0,0.05714285714285715,1.0,1.0,1.0,False,"1. Đối với người điều khiển xe mô tô, xe gắn máy, các loại xe tương tự xe mô tô và các loại xe tương tự xe gắn máy: Không đội “mũ bảo hiểm cho người đi mô tô, xe máy” hoặc đội “mũ bảo hiểm cho người đi mô tô, xe máy” không cài quai đúng quy cách khi điều khiển xe tham gia giao thông trên đường bộ [Điều 7, Khoản 2, Điểm h — NĐ 168/2024/NĐ-CP].
+
+2. Đối với người được chở trên xe mô tô, xe gắn máy, các loại xe tương tự xe mô tô, các loại xe tương tự xe gắn máy: Không đội “mũ bảo hiểm cho người đi m"
+hierarchical,RQ-004,simple_penalty,4.616317043008166,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,True,Thông tin này không có trong tài liệu được cung cấp.
+hierarchical,RQ-005,simple_penalty,3.0060004709957866,0.3493975903614458,0.29437683592110786,0.09090909090909091,1.0,0.16666666666666669,1.0,1.0,1.0,True,"1. Đối với người điều khiển xe ô tô và các loại xe tương tự xe ô tô: Phạt tiền từ 400.000 đồng đến 600.000 đồng [Điều 6, Khoản 1, Điểm đ — NĐ 168/2024/NĐ-CP].
+
+2. Đối với người điều khiển xe mô tô, xe gắn máy và các loại xe tương tự: Phạt tiền từ 400.000 đồng đến 600.000 đồng [Điều 7, Khoản 1, Điểm i — NĐ 168/2024/NĐ-CP] [Điều 7, Khoản 2 — NĐ 168/2024/NĐ-CP].
+
+Thông tin về số điểm trừ giấy phép lái xe đối với hành vi này không có trong tài liệu được cung cấp."
+hierarchical,RQ-006,multi_intent,2.6471683779964224,0.032786885245901634,0.029397590361445784,0.0,0.0,0.0,0.0,0.0,0.0,True,Thông tin này không có trong tài liệu được cung cấp.
+hierarchical,RQ-007,multi_intent,3.8439316709991544,0.26666666666666666,0.21174428695400638,0.10526315789473684,1.0,0.1904761904761905,1.0,1.0,1.0,True,"1. Phạt tiền từ 200.000 đồng đến 400.000 đồng đối với người điều khiển xe mô tô, xe gắn máy chở người ngồi trên xe không đội “mũ bảo hiểm cho người đi mô tô, xe máy” hoặc đội “mũ bảo hiểm cho người đi mô tô, xe máy” không cài quai đúng quy cách, trừ trường hợp chở người bệnh đi cấp cứu, trẻ em dưới 06 tuổi, áp giải người có hành vi vi phạm pháp luật [Điều 7, Khoản 2, Điểm i — NĐ 168/2024/NĐ-CP].
+
+2. Phạt tiền từ 400.000 đồng đến 600.000 đồng đối với người được chở trên xe mô tô, xe gắn máy không"
+hierarchical,RQ-008,multi_intent,2.6413745379977627,0.27083333333333337,0.2312065698041693,0.0,0.0,0.0,0.0,0.0,0.0,False,"1. Giấy phép lái xe hạng B1 được đổi, cấp lại sang giấy phép lái xe hạng B với điều kiện hạn chế là chỉ được điều khiển xe ô tô số tự động [Điều 89, Khoản 3, Điểm đ — Luật Trật tự ATGT đường bộ 2024].
+
+2. Giấy phép lái xe hạng B1 (cấp cho người không hành nghề lái xe) được đổi, cấp lại sang giấy phép lái xe hạng B hoặc hạng C1 và chứng chỉ điều khiển xe máy chuyên dùng cho người điều khiển máy kéo có trọng tải đến 3.500 kg [Điều 89, Khoản 3, Điểm e — Luật Trật tự ATGT đường bộ 2024].
+
+3. Giấy ph"
+hierarchical,RQ-009,multi_intent,2.4256570150027983,0.3380281690140845,0.31562607795791653,0.0,0.0,0.0,0.0,0.0,0.0,False,"1. Người đủ 16 tuổi trở lên được điều khiển xe gắn máy [Điều 59, Khoản 1, Điểm a — Luật Trật tự ATGT đường bộ 2024 (Nguồn 1)].
+
+2. Người đủ 18 tuổi trở lên được cấp giấy phép lái xe hạng A1 để điều khiển xe mô tô hai bánh có dung tích xi-lanh đến 125 cm hoặc có công suất động cơ điện đến 11 kW [Điều 59, Khoản 1, Điểm b — Luật Trật tự ATGT đường bộ 2024 (Nguồn 1)] [Điều 57, Khoản 1, Điểm a — Luật Trật tự ATGT đường bộ 2024 (Nguồn 4)].
+
+3. Người đủ 18 tuổi trở lên được cấp giấy phép lái xe hạng A "
+hierarchical,RQ-010,multi_intent,4.322515343010309,0.13551401869158877,0.1181338028169014,0.0,0.0,0.0,1.0,1.0,1.0,True,"Dựa trên các tài liệu được cung cấp, các trường hợp liên quan đến việc tịch thu phương tiện được quy định như sau:
+
+1. Tịch thu phương tiện đối với người điều khiển xe mô tô, xe gắn máy (và các loại xe tương tự) khi không có chứng nhận đăng ký xe hoặc sử dụng chứng nhận đăng ký xe không do cơ quan có thẩm quyền cấp, không đúng số khung, số máy của xe hoặc bị tẩy xóa mà không chứng minh được nguồn gốc xuất xứ của phương tiện [Điều 14, Khoản 5, Điểm b — NĐ 168/2024/NĐ-CP].
+
+2. Tịch thu phương tiện"
+hierarchical,RQ-011,cross_reference,1.8329078080132604,0.03773584905660377,0.03413542249580302,0.0,0.0,0.0,0.0,0.0,0.0,True,Thông tin này không có trong tài liệu được cung cấp.
+hierarchical,RQ-012,cross_reference,1.9098116850072984,0.03333333333333333,0.029916625796959292,0.0,0.0,0.0,0.0,0.0,0.0,True,Thông tin này không có trong tài liệu được cung cấp.
+hierarchical,RQ-013,cross_reference,3.322033911012113,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,False,
+hierarchical,RQ-014,cross_reference,2.6218551409983775,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,False,
+hierarchical,RQ-015,cross_reference,2.1830769459920703,0.4799999999999999,0.4256432621020498,0.25,1.0,0.4,1.0,1.0,1.0,False,"Khoản 2 Điều 48 Nghị định 168/2024/NĐ-CP nhắc đến việc tạm giữ phương tiện theo quy định tại Luật Xử lý vi phạm hành chính [Điều 48, Khoản 2 — NĐ 168/2024/NĐ-CP]."
+hierarchical,RQ-016,procedure,2.4580135329888435,0.4666666666666668,0.46304434678385936,0.0,0.0,0.0,0.0,0.0,0.0,False,"Thời hạn đăng kiểm định kỳ đối với ô tô chở người đến 08 chỗ (không kể chỗ của người lái xe) không kinh doanh vận tải được quy định như sau:
+
+1. Đối với xe có thời gian sản xuất đến 07 năm: Chu kỳ định kỳ là 24 tháng [Điều 35, Khoản 2 — Thông tư 47/2024/TT-BGTVT (47/2024/TT-BGTVT)].
+
+2. Đối với xe có thời gian sản xuất trên 07 năm đến 20 năm: Chu kỳ định kỳ là 12 tháng [Điều 35, Khoản 2 — Thông tư 47/2024/TT-BGTVT (47/2024/TT-BGTVT)].
+
+3. Đối với xe có thời gian sản xuất trên 20 năm: Chu kỳ định"
+hierarchical,RQ-017,procedure,3.232905021010083,0.17921146953405018,0.18482302713124912,0.0,0.0,0.0,0.0,0.0,0.0,False,"Thủ tục phục hồi điểm giấy phép lái xe được quy định tùy theo từng trường hợp như sau:
+
+1. Đối với trường hợp giấy phép lái xe chưa bị trừ hết điểm và không bị trừ điểm trong thời hạn 12 tháng kể từ ngày bị trừ điểm gần nhất:
+a) Khi đủ thời hạn 12 tháng, dữ liệu điểm giấy phép lái xe sẽ được tự động phục hồi đủ 12 điểm (bao gồm cả giấy phép lái xe đang trong thời hạn bị tước quyền sử dụng) và cập nhật tự động trong Cơ sở dữ liệu về xử lý vi phạm hành chính về trật tự, an toàn giao thông đường bộ"
+hierarchical,RQ-018,procedure,3.0370285120006884,0.05,0.046247156937073534,0.0,0.0,0.0,0.0,0.0,0.0,True,Thông tin này không có trong tài liệu được cung cấp.
+hierarchical,RQ-019,procedure,3.281497532996582,0.24761904761904757,0.27767129851461425,0.047619047619047616,1.0,0.0909090909090909,0.5,1.0,0.6666666666666666,False,"Các trường hợp dẫn đến bị thu hồi Giấy phép lái xe theo quy định bao gồm:
+
+1. Người được cấp giấy phép lái xe không đủ điều kiện sức khỏe theo kết luận của cơ sở khám bệnh, chữa bệnh đối với từng hạng giấy phép lái xe [Điều 62, Khoản 5, Điểm a — Luật Trật tự, an toàn giao thông đường bộ 2024 (36/2024/QH15)].
+
+2. Giấy phép lái xe được cấp sai quy định [Điều 62, Khoản 5, Điểm b — Luật Trật tự, an toàn giao thông đường bộ 2024 (36/2024/QH15)].
+
+3. Giấy phép lái xe đã quá thời hạn tạm giữ hoặc hết t"
+hierarchical,RQ-020,procedure,2.042810348997591,0.04878048780487805,0.045018450184501846,0.0,0.0,0.0,0.0,0.0,0.0,True,Thông tin này không có trong tài liệu được cung cấp.
+hierarchical,RQ-021,out_of_scope,3.995144155007438,0.15384615384615383,0.0950896336710834,1.0,1.0,1.0,1.0,1.0,1.0,True,Thông tin này không có trong tài liệu được cung cấp.
+hierarchical,RQ-022,out_of_scope,2.2024001740064705,0.3243243243243243,0.15111478117258464,1.0,1.0,1.0,1.0,1.0,1.0,True,Thông tin này không có trong tài liệu được cung cấp.
+hierarchical,RQ-023,out_of_scope,1.9367489949945593,0.05128205128205127,0.0475448168355417,1.0,1.0,1.0,1.0,1.0,1.0,True,Thông tin này không có trong tài liệu được cung cấp.
+hierarchical,RQ-024,out_of_scope,2.133766283004661,0.046511627906976744,0.042747021723896286,1.0,1.0,1.0,1.0,1.0,1.0,True,Thông tin này không có trong tài liệu được cung cấp.
+hierarchical,RQ-025,out_of_scope,3.7151104869990377,0.0,0.0,1.0,1.0,1.0,1.0,1.0,1.0,False,
+fixed_512,RQ-001,simple_penalty,3.049774268991314,0.6,0.47273249138920787,0.0,0.0,0.0,1.0,1.0,1.0,False,"Phạt tiền từ 4.000.000 đồng đến 6.000.000 đồng đối với người điều khiển xe mô tô, xe gắn máy không chấp hành hiệu lệnh của đèn tín hiệu giao thông [Điều 7, Khoản 7, Điểm c — NĐ 168/2024/NĐ-CP].
+
+Ngoài ra, người điều khiển xe thực hiện hành vi này còn bị trừ 02 điểm giấy phép lái xe [Điều 7, Khoản 13, Điểm a — NĐ 168/2024/NĐ-CP]."
+fixed_512,RQ-002,simple_penalty,3.9329446140036453,0.7549668874172185,0.6480560578661844,0.0,0.0,0.0,1.0,1.0,1.0,False,"Phạt tiền từ 6.000.000 đồng đến 8.000.000 đồng đối với người điều khiển xe ô tô trên đường mà trong máu hoặc hơi thở có nồng độ cồn nhưng chưa vượt quá 50 miligam/100 mililít máu hoặc chưa vượt quá 0,25 miligam/1 lít khí thở [Điều 6, Khoản 6, Điểm c — NĐ 168/2024/NĐ-CP].
+
+Ngoài việc bị phạt tiền, người điều khiển xe còn bị trừ 04 điểm giấy phép lái xe [Điều 6, Khoản 16, Điểm b — NĐ 168/2024/NĐ-CP]."
+fixed_512,RQ-003,simple_penalty,4.082184630999109,0.17294900221729492,0.20307298335467347,0.04,1.0,0.07692307692307693,1.0,1.0,1.0,False,"1. Phạt tiền từ 400.000 đồng đến 600.000 đồng đối với người được chở trên xe mô tô, xe gắn máy, các loại xe tương tự xe mô tô, các loại xe tương tự xe gắn máy không đội “mũ bảo hiểm cho người đi mô tô, xe máy” hoặc đội “mũ bảo hiểm cho người đi mô tô, xe máy” không cài quai đúng quy cách khi tham gia giao thông trên đường bộ [Điều 12, Khoản 5, Điểm b — NĐ 168/2024/NĐ-CP].
+
+2. Phạt tiền từ 400.000 đồng đến 600.000 đồng đối với người điều khiển xe mô tô, xe gắn máy không đội “mũ bảo hiểm cho người"
+fixed_512,RQ-004,simple_penalty,3.3289821229991503,0.6511627906976745,0.5216461785141635,0.0,0.0,0.0,1.0,1.0,1.0,False,"Phạt tiền từ 6.000.000 đồng đến 8.000.000 đồng đối với người điều khiển xe mô tô, xe gắn máy đi vào đường cao tốc, trừ xe phục vụ việc quản lý, bảo trì đường cao tốc [Điều 7, Khoản 7, Điểm b — NĐ 168/2024/NĐ-CP].
+
+Ngoài ra, người điều khiển xe thực hiện hành vi này còn bị trừ 06 điểm giấy phép lái xe [Điều 7, Khoản 13, Điểm c — NĐ 168/2024/NĐ-CP]."
+fixed_512,RQ-005,simple_penalty,2.140582400999847,0.38571428571428573,0.326044703595724,0.125,1.0,0.2222222222222222,1.0,1.0,1.0,True,"1. Đối với người điều khiển xe mô tô, xe gắn máy: Phạt tiền từ 400.000 đồng đến 600.000 đồng [Điều 7, Khoản 1, Điểm i — NĐ 168/2024/NĐ-CP]
+
+2. Đối với người điều khiển xe ô tô: Phạt tiền từ 600.000 đồng đến 800.000 đồng [Điều 6, Khoản 1 — NĐ 168/2024/NĐ-CP]
+
+Thông tin về số điểm trừ giấy phép lái xe đối với hành vi này không có trong tài liệu được cung cấp."
+fixed_512,RQ-006,multi_intent,2.402097833008156,0.032786885245901634,0.029397590361445784,0.0,0.0,0.0,0.0,0.0,0.0,True,Thông tin này không có trong tài liệu được cung cấp.
+fixed_512,RQ-007,multi_intent,5.0903588259971,0.31279620853080564,0.24131406948744408,0.1111111111111111,1.0,0.19999999999999998,1.0,1.0,1.0,True,"1. Phạt tiền từ 600.000 đồng đến 800.000 đồng đối với hành vi chở theo từ 03 người trở lên trên xe [Điều 7, Khoản 3, Điểm b — NĐ 168/2024/NĐ-CP].
+
+2. Phạt tiền từ 400.000 đồng đến 600.000 đồng đối với hành vi không đội “mũ bảo hiểm cho người đi mô tô, xe máy” hoặc đội “mũ bảo hiểm cho người đi mô tô, xe máy” không cài quai đúng quy cách khi điều khiển xe tham gia giao thông trên đường bộ [Điều 7, Khoản 2, Điểm h — NĐ 168/2024/NĐ-CP].
+
+3. Về việc trừ điểm giấy phép lái xe: Hành vi chở theo từ 03 "
+fixed_512,RQ-008,multi_intent,2.545898197000497,0.44651162790697674,0.37060755336617407,0.0,0.0,0.0,1.0,1.0,1.0,False,"Theo Luật Trật tự, an toàn giao thông đường bộ 2024, việc chuyển đổi giấy phép lái xe (GPLX) hạng B1 và B2 được quy định như sau:
+
+1. Giấy phép lái xe hạng B1 số tự động cấp cho người không hành nghề lái xe được đổi, cấp lại sang giấy phép lái xe hạng B với điều kiện hạn chế là chỉ được điều khiển xe ô tô số tự động [Điều 89, Khoản 3, Điểm đ — Luật Trật tự ATGT đường bộ 2024 (36/2024/QH15)].
+
+2. Giấy phép lái xe hạng B1 và B2 được đổi, cấp lại sang giấy phép lái xe hạng B hoặc hạng C1 và chứng c"
+fixed_512,RQ-009,multi_intent,2.5662854770052945,0.33636363636363636,0.31659132764105136,0.0,0.0,0.0,1.0,1.0,1.0,False,"1. Người đủ 16 tuổi trở lên được điều khiển xe gắn máy [Điều 59, Khoản 1, Điểm a — Luật Trật tự ATGT đường bộ 2024 (36/2024/QH15)].
+
+2. Người đủ 18 tuổi trở lên được cấp giấy phép lái xe hạng A1 (cấp cho người lái xe mô tô hai bánh có dung tích xi-lanh đến 125 cm³ hoặc có công suất động cơ điện đến 11 kW) [Điều 59, Khoản 1, Điểm b — Luật Trật tự ATGT đường bộ 2024 (36/2024/QH15)] [Điều 57, Khoản 1, Điểm a — Luật Trật tự ATGT đường bộ 2024 (36/2024/QH15)].
+
+3. Người đủ 18 tuổi trở lên được cấp gi"
+fixed_512,RQ-010,multi_intent,4.145426076007425,0.16,0.09736294240111035,0.0,0.0,0.0,0.5,1.0,0.6666666666666666,False,"Dưới đây là các trường hợp bị tịch thu phương tiện và tạm giữ phương tiện theo quy định:
+
+**1. Các trường hợp bị tịch thu phương tiện:**
+
+*   Điều khiển loại xe sản xuất, lắp ráp trái quy định tham gia giao thông [Điều 14, Khoản 4 — NĐ 168/2024/NĐ-CP].
+*   Điều khiển xe máy chuyên dùng sản xuất, lắp ráp hoặc cải tạo trái quy định tham gia giao thông [Điều 16, Khoản 3 — NĐ 168/2024/NĐ-CP].
+*   Sử dụng chứng nhận đăng ký xe không do cơ quan có thẩm quyền cấp, không đúng số khung, số máy hoặc bị tẩ"
+fixed_512,RQ-011,cross_reference,2.0370582479954464,0.03773584905660377,0.03413542249580302,0.0,0.0,0.0,0.0,0.0,0.0,True,Thông tin này không có trong tài liệu được cung cấp.
+fixed_512,RQ-012,cross_reference,3.8044656200072495,0.03333333333333333,0.029916625796959292,0.0,0.0,0.0,0.0,0.0,0.0,True,Thông tin này không có trong tài liệu được cung cấp.
+fixed_512,RQ-013,cross_reference,2.2616219880001154,0.1276595744680851,0.038828771483131755,0.0,0.0,0.0,0.0,0.0,0.0,True,Thông tin này không có trong tài liệu được cung cấp.
+fixed_512,RQ-014,cross_reference,2.3457462950027548,0.12244897959183672,0.11138161898965307,0.0,0.0,0.0,0.0,0.0,0.0,True,Thông tin này không có trong tài liệu được cung cấp.
+fixed_512,RQ-015,cross_reference,2.0332614870130783,0.43478260869565216,0.4264164827078734,0.1,1.0,0.18181818181818182,1.0,1.0,1.0,False,"Khoản 2 Điều 48 Nghị định 168/2024/NĐ-CP nhắc đến việc tạm giữ phương tiện theo quy định tại điểm a, điểm c khoản 1; khoản 2; khoản 6; khoản 7; khoản 8 Điều 125 của Luật Xử lý vi phạm hành chính [Điều 48, Khoản 2 — NĐ 168/2024/NĐ-CP]."
+fixed_512,RQ-016,procedure,2.7186892809986603,0.42424242424242425,0.42150723385877775,0.0,0.0,0.0,0.0,0.0,0.0,False,"Thời hạn kiểm định định kỳ đối với ô tô chở người đến 08 chỗ (không kể chỗ của người lái xe) không kinh doanh vận tải được quy định như sau:
+
+1. Đối với xe có thời gian sản xuất đến 07 năm: 24 tháng [Điều 35, Khoản 1 — Thông tư 47/2024/TT-BGTVT (47/2024/TT-BGTVT)]
+
+2. Đối với xe có thời gian sản xuất trên 07 năm đến 20 năm: 12 tháng [Điều 35, Khoản 1 — Thông tư 47/2024/TT-BGTVT (47/2024/TT-BGTVT)]
+
+3. Đối với xe có thời gian sản xuất trên 20 năm: 06 tháng [Điều 35, Khoản 1 — Thông tư 47/2024/TT-"
+fixed_512,RQ-017,procedure,3.9885214769892627,0.1754385964912281,0.18108217514505462,0.0,0.0,0.0,0.0,0.0,0.0,False,"Thủ tục phục hồi điểm giấy phép lái xe được quy định như sau:
+
+1. Đối với trường hợp giấy phép lái xe chưa bị trừ hết điểm và không bị trừ điểm trong thời hạn 12 tháng kể từ ngày bị trừ điểm gần nhất:
+   a) Khi đủ thời hạn 12 tháng, dữ liệu điểm giấy phép lái xe sẽ được tự động phục hồi đủ 12 điểm (bao gồm cả trường hợp giấy phép lái xe đang trong thời hạn bị tước quyền sử dụng) và cập nhật tự động trong Cơ sở dữ liệu về xử lý vi phạm hành chính về trật tự, an toàn giao thông đường bộ [Điều 51, "
+fixed_512,RQ-018,procedure,2.9250813179969555,0.1784037558685446,0.12969525159461376,0.0,0.0,0.0,0.0,0.0,0.0,False,"Điều kiện để được cấp Giấy phép lái xe hạng C bao gồm:
+
+1. Người học lái xe phải được đào tạo tại các cơ sở đào tạo lái xe hoặc các hình thức đào tạo lái xe khác [Điều 60, Khoản 2 — Luật Trật tự ATGT đường bộ 2024 (Nguồn 2)].
+
+2. Phải đáp ứng các điều kiện về độ tuổi, sức khỏe, trình độ văn hóa theo quy định [Điều 7, Khoản 2 — Thông tư 12/2017/TT-BGTVT (Nguồn 5)].
+
+3. Đối với trường hợp nâng hạng giấy phép lái xe lên hạng C, người học phải có đủ thời gian hành nghề lái xe từ 03 năm trở lên và 50"
+fixed_512,RQ-019,procedure,3.0537674849911127,0.38095238095238093,0.41569107111654724,0.0,0.0,0.0,1.0,1.0,1.0,False,"Giấy phép lái xe bị thu hồi khi thuộc một trong các trường hợp sau đây:
+
+1. Người được cấp giấy phép lái xe không đủ điều kiện sức khỏe theo kết luận của cơ sở khám bệnh, chữa bệnh đối với từng hạng giấy phép lái xe [Điều 62, Khoản 5, Điểm a — Luật Trật tự, an toàn giao thông đường bộ 2024 (36/2024/QH15)]
+
+2. Giấy phép lái xe được cấp sai quy định [Điều 62, Khoản 5, Điểm b — Luật Trật tự, an toàn giao thông đường bộ 2024 (36/2024/QH15)]
+
+3. Giấy phép lái xe đã quá thời hạn tạm giữ hoặc hết thời "
+fixed_512,RQ-020,procedure,5.432390164001845,0.04878048780487805,0.045018450184501846,0.0,0.0,0.0,0.0,0.0,0.0,True,Thông tin này không có trong tài liệu được cung cấp.
+fixed_512,RQ-021,out_of_scope,9.978130743998918,0.15384615384615383,0.0950896336710834,1.0,1.0,1.0,1.0,1.0,1.0,True,Thông tin này không có trong tài liệu được cung cấp.
+fixed_512,RQ-022,out_of_scope,2.1824947360000806,0.3243243243243243,0.15111478117258464,1.0,1.0,1.0,1.0,1.0,1.0,True,Thông tin này không có trong tài liệu được cung cấp.
+fixed_512,RQ-023,out_of_scope,1.357758575992193,0.05128205128205127,0.0475448168355417,1.0,1.0,1.0,1.0,1.0,1.0,True,Thông tin này không có trong tài liệu được cung cấp.
+fixed_512,RQ-024,out_of_scope,3.550048778997734,0.0,0.0,1.0,1.0,1.0,1.0,1.0,1.0,False,
+fixed_512,RQ-025,out_of_scope,2.9117341980017954,0.0,0.0,1.0,1.0,1.0,1.0,1.0,1.0,False,

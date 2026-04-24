@@ -131,7 +131,13 @@ def _norm_cite_val(v):
 
 
 def _citation_key(c: dict, level: str = "khoan") -> tuple:
-    """Turn a citation dict into a hashable key at the requested granularity."""
+    """Turn a citation dict into a hashable key at the requested granularity.
+
+    level="doc_id" returns only (doc_id,) — useful for fixed-size chunker
+    ablation where dieu/khoan aren't reliably extractable.
+    """
+    if level == "doc_id":
+        return (_norm_cite_val(c.get("doc_id")),)
     parts = [_norm_cite_val(c.get("doc_id")), _norm_cite_val(c.get("dieu"))]
     if level in ("khoan", "diem"):
         parts.append(_norm_cite_val(c.get("khoan")))

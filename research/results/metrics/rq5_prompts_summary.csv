@@ -1,0 +1,4 @@
+variant,f1_token,rouge_l,cit_p,cit_r,cit_f1,refusal,latency_s
+P0_zero_shot,0.3034,0.2598,0.1806,0.36,0.1957,0.0,3.7607
+P1_role_only,0.2841,0.2485,0.1817,0.4,0.198,0.0,3.703
+P2_full_rules,0.2008,0.1678,0.2272,0.48,0.2475,0.72,4.671

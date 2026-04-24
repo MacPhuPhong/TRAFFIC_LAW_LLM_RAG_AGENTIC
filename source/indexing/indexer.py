@@ -32,11 +32,14 @@ from rag_core.retriever import TrafficHybridRetriever  # noqa: E402
 # ---------------------------------------------------------------------------
 QDRANT_HOST = "localhost"
 QDRANT_PORT = 6334
-COLLECTION_NAME = "traffic_law_v2"
-EMBEDDING_MODEL = "KeepItReal/vietnamese-sbert"
-VECTOR_SIZE = 768
+COLLECTION_NAME = "traffic_law_v3_e5"
+EMBEDDING_MODEL = "intfloat/multilingual-e5-small"
+VECTOR_SIZE = 384
 BATCH_EMBED = 64       # Encode 64 texts at a time
 BATCH_UPSERT = 100     # Push 100 points at a time
+
+# e5 family requires "passage: " / "query: " prefix at encode time.
+PASSAGE_PREFIX = "passage: " if "e5" in EMBEDDING_MODEL.lower() else ""
 
 # Paths
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -68,7 +71,7 @@ logger = logging.getLogger(__name__)
 def create_collection(client: QdrantClient, recreate: bool = False):
     """
     Tạo collection với:
-      - Vector 768-dim (vietnamese-sbert), Cosine distance
+      - Vector 384-dim (multilingual-e5-small), Cosine distance
       - Payload indexes: doc_id, status, effective_date, topic
     """
     collections = [c.name for c in client.get_collections().collections]
@@ -125,7 +128,7 @@ def index_chunks(client: QdrantClient, model: SentenceTransformer):
 
     # ── Embed theo batch ──
     logger.info(f"Bắt đầu embedding ({EMBEDDING_MODEL}, batch={BATCH_EMBED})...")
-    texts = [c["content"] for c in chunks]
+    texts = [PASSAGE_PREFIX + c["content"] for c in chunks]
     all_vectors = []
 
     t0 = time.time()

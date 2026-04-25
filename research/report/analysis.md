@@ -198,6 +198,57 @@ Pull toàn bộ run từ project `Traffic-RAG-Evaluation` qua `langsmith.Client`
 
 ---
 
+## RQ9 — Query Rewriting Ablation
+
+**Câu hỏi:** Việc viết lại (rewrite + expand) truy vấn người dùng qua một LLM analyzer có thực sự cải thiện câu trả lời so với ground truth không, hay chỉ là overhead thừa?
+
+### Thiết lập
+
+| Variant | Query vào retriever | Query vào generator | LLM phụ |
+|---|---|---|---|
+| **NO_REWRITE** | Câu hỏi thô của user | Câu hỏi thô của user | 0 |
+| **REWRITE** | `expanded_query` (thuật ngữ pháp lý) | `standalone_query` (giải tham chiếu lịch sử) | 1 analyzer call/câu |
+
+- Retriever (TrafficHybridRetriever với e5-small, BM25 + dense + RRF, top_k=10) và generator (Gemini, P2 full rules) giữ nguyên.
+- Analyzer dùng prompt production `ANALYZER_SYSTEM_PROMPT` — phân loại + viết câu độc lập + mở rộng thuật ngữ (ví dụ "vượt đèn đỏ đi xe máy" → "hành vi vượt đèn đỏ đối với xe mô tô, xe gắn máy, mức xử phạt theo Nghị định 168/2024/NĐ-CP").
+- 25 câu × 2 variant = 50 lượt gọi generator + 25 lượt gọi analyzer (chỉ ở REWRITE). Script: [rq9_rewrite_ablation.py](../scripts/rq9_rewrite_ablation.py).
+
+### Kết quả
+
+| Variant | R@5 | R@10 | MRR | nDCG@10 | F1 token | ROUGE-L | Cit-P | Cit-R | Cit-F1 | Refusal | Latency (s) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| **NO_REWRITE** | **0.40** | **0.46** | **0.197** | **0.212** | 0.259 | 0.208 | **0.219** | **0.44** | **0.233** | 0.56 | **1.87** |
+| REWRITE | 0.34 | 0.42 | 0.127 | 0.144 | **0.274** | **0.228** | 0.207 | 0.38 | 0.214 | **0.52** | 2.72 |
+
+![RQ9 rewrite comparison](../results/figures/rq9_rewrite_comparison.png)
+
+**Per-category (mean R@10 / F1 token):**
+
+| Category | N | R@10 NO | R@10 RW | F1 NO | F1 RW |
+|---|---:|---:|---:|---:|---:|
+| simple_penalty  | 5 | 0.40 | 0.30 | 0.52 | **0.57** |
+| procedure       | 5 | 0.40 | 0.30 | 0.28 | **0.35** |
+| multi_intent    | 5 | 0.30 | 0.30 | 0.21 | **0.24** |
+| cross_reference | 5 | **0.20** | 0.20 | **0.16** | 0.07 |
+| out_of_scope    | 5 | 1.00 | 1.00 | 0.14 | 0.14 |
+
+![RQ9 per category](../results/figures/rq9_rewrite_per_category.png)
+
+### Kết luận
+
+- **Rewrite làm TỤT retrieval** trên mọi metric khoan-level: R@10 −4 điểm %, MRR −35% tương đối (0.197 → 0.127), nDCG@10 −32%. Điều này trái với kỳ vọng thông thường rằng expansion = recall cao hơn.
+- **Nguyên nhân chính**: `multilingual-e5-small` đã được huấn luyện trên dữ liệu web đa ngôn ngữ đa dạng, xử lý tốt ngôn ngữ dân dã ("vượt đèn đỏ đi xe máy") — khi analyzer chèn thêm khung "theo Nghị định 168/2024/NĐ-CP + hình thức xử phạt bổ sung + biện pháp khắc phục hậu quả", query vector **bị kéo về cụm văn bản chung (boilerplate)** chứ không còn gần khoản cụ thể. BM25 cũng bị tổn hại vì các token pháp lý phổ biến xuất hiện ở hàng trăm khoản.
+- **Category `cross_reference` bị hurt nặng nhất** (F1 0.16 → 0.07): câu hỏi có nhiều ý liên kết, analyzer dễ expand quá đà, làm mất từ khóa chính.
+- **Answer side được cải thiện nhẹ** (F1 +1.5 điểm %, ROUGE-L +2 điểm %) ở `simple_penalty` và `procedure`: khi context đã chứa đủ thông tin, `standalone_query` (giải tham chiếu history) giúp generator diễn đạt trả lời rõ ràng hơn — nhưng không đủ bù cho retrieval suy giảm.
+- **Latency tăng 45%** (1.87 → 2.72s) do chi phí 1 analyzer call thêm mỗi truy vấn, và cost +~$0.0004/query.
+- **Quyết định**: **bỏ auto-rewrite ở pipeline `legal_rag` đơn thuần** khi user không có history. Giữ analyzer chỉ cho (a) **routing** (phân loại legal_rag / chit_chat / web / out_of_scope — không thay query), và (b) **history resolution** (chỉ chạy khi có ≥ 1 lượt hội thoại trước đó, cần dereference "ô tô thì sao?"). Với câu hỏi đầu lượt một câu, **retriever dùng raw query**.
+
+> **Lưu ý phương pháp:** ở `out_of_scope`, R@10 = 1.00 là artifact — gold_citations rỗng nên recall định nghĩa là 1.0 theo `metrics.py:152`. Không nên đọc như "retrieval hoàn hảo". F1 0.14 ở cả hai variant phản ánh generator đúng đắn từ chối.
+>
+> **Limitation:** Một analyzer khác (prompt ngắn gọn hơn, ít boilerplate pháp lý) có thể cho kết quả khác. Không nên kết luận "rewrite luôn xấu" — chỉ nên kết luận "prompt analyzer hiện tại over-expand". Hướng follow-up: rewrite **tối giản** (chỉ giải tham chiếu history, không thêm thuật ngữ) và đánh giá lại.
+
+---
+
 ## §5 Tổng kết & Hạn chế
 
 | RQ | Phát hiện chính | Quyết định |
@@ -208,6 +259,7 @@ Pull toàn bộ run từ project `Traffic-RAG-Evaluation` qua `langsmith.Client`
 | **RQ5** | Rules (P2) tăng Cit-R 33% so với zero-shot; role-only (P1) gần như vô ích | Giữ P2 nhưng nghiên cứu nới rule từ chối (refuse rate 72% là cao) |
 | **RQ7** | Ragas fail 100% do judge throttle — không thể đánh giá được | Bỏ trong phạm vi thesis, đánh dấu future-work |
 | **RQ8** | `legal_rag` node là cost/latency center ($0.010/query, p50 4.6 s); routing gần như miễn phí | Tối ưu sau: streaming output + max_tokens cap |
+| **RQ9** | Rewrite → retrieval tệ hơn (MRR −35%, R@10 −4pts); F1 nhích +1.5pts nhờ standalone_query; latency +45% | **Tắt auto-rewrite ở lượt đầu** — giữ analyzer cho routing + history resolution only |
 
 ### Hạn chế
 

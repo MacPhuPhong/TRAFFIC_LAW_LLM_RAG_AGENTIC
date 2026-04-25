@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-Streamlit UI for the Agentic Traffic-Law RAG.
+Streamlit UI — Trợ lý Luật Giao thông Việt Nam.
 
 Start the FastAPI backend first:
-    uvicorn traffic_rag.api.main:app --port 8000
+    uvicorn api.main:app --port 8000
 
 Then run the UI:
-    streamlit run traffic_rag/ui/app.py
+    streamlit run ui/app.py
 """
 
 from __future__ import annotations
@@ -18,56 +18,145 @@ import httpx
 import streamlit as st
 
 # ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
 
 API_BASE = os.getenv("TRAFFIC_RAG_API", "http://localhost:8000")
 REQUEST_TIMEOUT = 120.0
 
-CATEGORY_LABELS = {
-    "legal_rag": ("📘", "Luật VN"),
-    "chit_chat": ("💬", "Trò chuyện"),
-    "web_legal_search": ("🌐", "Web search"),
-    "out_of_scope": ("🚫", "Ngoài phạm vi"),
-}
-
 st.set_page_config(
-    page_title="Trợ lý Luật Giao thông VN",
-    page_icon="🚗",
+    page_title="Trợ lý Luật Giao thông",
+    page_icon="⚖️",
     layout="wide",
 )
 
-# --- Simple UI Optimization --------------------------------------------------
+# ---------------------------------------------------------------------------
+# Custom CSS — premium dark-accent legal theme
+# ---------------------------------------------------------------------------
 st.markdown(
     """
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
-    html, body, [class*="css"] {
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    /* Global font and background */
+    html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"], [data-testid="stHeader"] {
         font-family: 'Inter', sans-serif;
+        background-color: #f8fafc !important; /* Unified Slate-50 background */
     }
+
+    /* Target the chat input container specifically */
+    div[data-testid="stChatInput"] {
+        background-color: #f8fafc !important;
+        border: 2px solid #cbd5e1 !important; /* Thicker, defined border */
+        border-radius: 14px;
+    }
+    
+    /* Input interaction focus */
+    div[data-testid="stChatInput"]:focus-within {
+        border-color: #3b82f6 !important;
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+    }
+
+    /* Chat message styling */
     .stChatMessage {
-        border-radius: 10px;
-        margin-bottom: 5px;
+        border-radius: 12px;
+        margin-bottom: 12px;
+        border: 1px solid #e2e8f0;
+        background-color: white;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
     }
+
+    /* Sidebar styling — Synchronized with main area */
+    section[data-testid="stSidebar"] {
+        background-color: #f1f5f9 !important; /* Slightly darker slate for depth */
+        border-right: 1px solid #e2e8f0;
+    }
+    section[data-testid="stSidebar"] * {
+        color: #1e293b !important; /* Dark text for light sidebar */
+    }
+    section[data-testid="stSidebar"] .stButton > button {
+        background: #3b82f6;
+        color: white !important;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+    }
+    section[data-testid="stSidebar"] .stButton > button:hover {
+        background: #2563eb;
+    }
+
+    /* Source expander styling */
+    .stExpander {
+        border-radius: 8px !important;
+        border: 1px solid #e2e8f0 !important;
+        background: #f8fafc !important;
+    }
+    .streamlit-expanderHeader {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #475569 !important;
+    }
+
+    /* Title area */
+    .main-title {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        padding: 20px 0 10px 0;
+        border-bottom: 2px solid #e2e8f0;
+        margin-bottom: 20px;
+    }
+    .main-title h1 {
+        font-size: 1.8rem;
+        font-weight: 800;
+        color: #0f172a;
+        margin: 0;
+    }
+    .subtitle {
+        color: #64748b;
+        font-size: 0.95rem;
+        margin-bottom: 25px;
+    }
+
+    /* Thinking indicator */
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.4; }
+    }
+    .thinking-dot {
+        display: inline-block;
+        width: 8px; height: 8px;
+        border-radius: 50%;
+        background: #3b82f6;
+        margin: 0 3px;
+        animation: pulse 1.4s infinite;
+    }
+    .thinking-dot:nth-child(2) { animation-delay: 0.2s; }
+    .thinking-dot:nth-child(3) { animation-delay: 0.4s; }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
 
-# --- session-state bootstrap ------------------------------------------------
-
+# ---------------------------------------------------------------------------
+# Session state
+# ---------------------------------------------------------------------------
 
 def _init_state():
     st.session_state.setdefault("thread_id", str(uuid4()))
-    st.session_state.setdefault("history", [])  # list[dict]
+    st.session_state.setdefault("history", [])
     st.session_state.setdefault("pending_thread", None)
     st.session_state.setdefault("pending_category", None)
+    st.session_state.setdefault("waiting_for_response", False)
 
 
 _init_state()
 
 
-# --- HTTP helpers -----------------------------------------------------------
-
+# ---------------------------------------------------------------------------
+# HTTP helpers
+# ---------------------------------------------------------------------------
 
 def _api_health() -> tuple[bool, str]:
     try:
@@ -100,71 +189,98 @@ def _api_resume(thread_id: str, approved: bool, override: dict | None = None) ->
     return r.json()
 
 
-def _api_pending(thread_id: str) -> dict:
-    r = httpx.get(f"{API_BASE}/pending/{thread_id}", timeout=30.0)
-    r.raise_for_status()
-    return r.json()
-
-
-# --- sidebar ---------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Sidebar — clean & minimal
+# ---------------------------------------------------------------------------
 
 with st.sidebar:
-    st.title("🚗 Trợ lý Luật GT")
-    st.caption("LangGraph + HITL + Tavily fallback")
-
-    ok, detail = _api_health()
-    if ok:
-        st.success(f"API: online — `{API_BASE}`")
-    else:
-        st.error(f"API: offline — `{API_BASE}`\n{detail}")
+    st.markdown(
+        """
+        <div style="text-align:center; padding: 16px 0 8px 0;">
+            <div style="font-size: 2.5rem;">⚖️</div>
+            <div style="font-size: 1.2rem; font-weight: 700; margin-top: 4px;">
+                Trợ lý Luật Giao thông
+            </div>
+            <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 2px;">
+                Hệ thống tra cứu thông minh
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     st.divider()
 
-    st.markdown("**Thread hiện tại**")
-    st.code(st.session_state.thread_id, language=None)
+    # API status — compact
+    ok, _ = _api_health()
+    if ok:
+        st.markdown(
+            '<div style="display:flex;align-items:center;gap:6px;font-size:0.8rem;">'
+            '<span style="width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block;"></span>'
+            'Hệ thống đang hoạt động</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            '<div style="display:flex;align-items:center;gap:6px;font-size:0.8rem;">'
+            '<span style="width:8px;height:8px;border-radius:50%;background:#ef4444;display:inline-block;"></span>'
+            'Hệ thống ngoại tuyến</div>',
+            unsafe_allow_html=True,
+        )
 
-    if st.button("🔄 Bắt đầu cuộc hội thoại mới", use_container_width=True):
+    st.divider()
+
+    if st.button("🔄  Cuộc hội thoại mới", use_container_width=True):
         st.session_state.thread_id = str(uuid4())
         st.session_state.history = []
         st.session_state.pending_thread = None
         st.session_state.pending_category = None
+        st.session_state.waiting_for_response = False
         st.rerun()
 
-    with st.expander("ℹ️ Các route của Router", expanded=False):
-        st.markdown(
-            "- **📘 Luật VN** → truy xuất corpus + generator\n"
-            "- **💬 Trò chuyện** → LLM trả lời xã giao\n"
-            "- **🌐 Web search** → Tavily (quốc tế / tin mới)\n"
-            "- **🚫 Ngoài phạm vi** → từ chối\n"
-            "\n_Câu hỏi chứa từ khoá rủi ro cao (tịch thu, hình sự, tước GPLX...) "
-            "sẽ bị chặn chờ phê duyệt (HITL)._"
-        )
+    st.divider()
 
-    with st.expander("🧪 Ví dụ câu hỏi", expanded=False):
-        examples = [
-            ("📘", "Vượt đèn đỏ xe máy phạt bao nhiêu?"),
-            ("📘", "Chu kỳ đăng kiểm ô tô dưới 9 chỗ?"),
-            ("⚠️", "Khi nào bị tịch thu phương tiện?"),
-            ("💬", "Xin chào, bạn là ai?"),
-            ("🌐", "Luật giao thông ở Nhật Bản thế nào?"),
-            ("🚫", "Cách nấu phở bò ngon?"),
-        ]
-        for icon, q in examples:
-            if st.button(f"{icon} {q}", key=f"ex_{q}", use_container_width=True):
-                st.session_state._pending_input = q
-                st.rerun()
+    # Capability hints
+    st.markdown(
+        """
+        <div style="font-size:0.78rem; line-height:1.6; color:#94a3b8;">
+            <div style="margin-bottom:8px; font-weight:600; color:#cbd5e1;">Có thể hỏi về</div>
+            <div>⚖️ Mức phạt vi phạm giao thông</div>
+            <div>📋 Thủ tục đăng ký, đăng kiểm xe</div>
+            <div>🪪 Giấy phép lái xe & điểm trừ</div>
+            <div>📜 Nghị định, Thông tư mới nhất</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
-# --- main column ------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Main content area — title
+# ---------------------------------------------------------------------------
 
-st.title("🚗 Trợ lý Pháp lý Giao thông Việt Nam")
-st.caption("Agentic RAG · LangGraph · Human-in-the-loop · Web-fallback")
+st.markdown(
+    """
+    <div class="main-title">
+        <div style="font-size:2rem;">⚖️</div>
+        <h1>Trợ lý Pháp lý Giao thông Việt Nam</h1>
+    </div>
+    <div class="subtitle">
+        Tra cứu mức phạt, quy định đăng ký xe, đăng kiểm, giấy phép lái xe theo Nghị định 168/2024
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
+
+# ---------------------------------------------------------------------------
+# Render helpers
+# ---------------------------------------------------------------------------
 
 def _render_sources(sources: list[dict]) -> None:
     if not sources:
         return
-    with st.expander(f"📚 Nguồn ({len(sources)})", expanded=False):
+    with st.expander(f"📎 Nguồn trích dẫn ({len(sources)})", expanded=False):
         for i, s in enumerate(sources, 1):
             if s.get("url"):
                 st.markdown(
@@ -172,39 +288,34 @@ def _render_sources(sources: list[dict]) -> None:
                 )
             else:
                 parts = []
-                if s.get("dieu"): parts.append(f"Điều {s['dieu']}")
-                if s.get("khoan"): parts.append(f"Khoán {s['khoan']}")
-                if s.get("diem"): parts.append(f"Điểm {s['diem']}")
+                if s.get("dieu"):
+                    parts.append(f"Điều {s['dieu']}")
+                if s.get("khoan"):
+                    parts.append(f"Khoản {s['khoan']}")
+                if s.get("diem"):
+                    parts.append(f"Điểm {s['diem']}")
                 loc = " · ".join(parts)
                 doc = s.get("ten_van_ban") or s.get("doc_id", "")
-                did = s.get("doc_id", "")
-                st.markdown(f"**[{i}]** {loc} — {doc} _({did})_")
+                st.markdown(f"**[{i}]** {loc} — {doc}")
 
 
 def _render_message(msg: dict) -> None:
     if msg["role"] == "user":
-        with st.chat_message("user"):
+        with st.chat_message("user", avatar="👤"):
             st.markdown(msg["content"])
         return
 
-    with st.chat_message("assistant"):
-        cat = msg.get("category")
-        if cat and cat in CATEGORY_LABELS:
-            icon, label = CATEGORY_LABELS[cat]
-            st.caption(f"{icon} **{label}** · model: `{msg.get('model_info') or '?'}`")
-
+    with st.chat_message("assistant", avatar="⚖️"):
+        # HITL pending state
         if msg.get("pending"):
             st.warning(
-                "🕵️ **Câu trả lời được tổng hợp từ Internet — đang chờ chuyên gia pháp lý duyệt.**\n\n"
-                "Bản nháp bên dưới CHƯA gửi cho người dùng. "
-                "Duyệt để phát hành, Từ chối để thay bằng lời khuyên mặc định, "
-                "hoặc Chỉnh sửa để biên tập trước khi phát hành."
+                "🔍 **Câu trả lời từ Internet — đang chờ xác nhận.**"
             )
             draft = msg.get("draft_answer") or "_(không có nội dung nháp)_"
-            st.markdown("**📝 Bản nháp (chưa phát hành):**")
+            st.markdown("**📝 Bản nháp:**")
             edit_key = f"edit_{msg['thread_id']}_{msg['idx']}"
             edited = st.text_area(
-                "Biên tập bản nháp trước khi phát hành (tùy chọn):",
+                "Chỉnh sửa bản nháp:",
                 value=draft,
                 key=edit_key,
                 height=180,
@@ -212,17 +323,17 @@ def _render_message(msg: dict) -> None:
             )
             _render_sources(msg.get("sources", []))
 
-            col1, col2, col3 = st.columns(3)
+            col1, col2 = st.columns(2)
             tid = msg["thread_id"]
             with col1:
-                if st.button("✅ Duyệt", key=f"ok_{tid}_{msg['idx']}", use_container_width=True):
+                if st.button("✅ Phê duyệt", key=f"ok_{tid}_{msg['idx']}", use_container_width=True):
                     try:
                         override = None
                         if edited.strip() and edited.strip() != draft.strip():
                             override = {"draft_answer": edited.strip()}
                         result = _api_resume(tid, approved=True, override=override)
                     except Exception as exc:
-                        st.error(f"Resume lỗi: {exc}")
+                        st.error(f"Lỗi: {exc}")
                         return
                     _finalize_pending(msg["idx"], result)
                     st.rerun()
@@ -231,14 +342,13 @@ def _render_message(msg: dict) -> None:
                     try:
                         result = _api_resume(tid, approved=False)
                     except Exception as exc:
-                        st.error(f"Resume lỗi: {exc}")
+                        st.error(f"Lỗi: {exc}")
                         return
                     _finalize_pending(msg["idx"], result)
                     st.rerun()
-            with col3:
-                st.caption("💡 Chỉnh sửa trong ô trên rồi bấm Duyệt để phát hành bản đã sửa.")
             return
 
+        # Normal answer
         if msg.get("answer"):
             st.markdown(msg["answer"])
         if msg.get("error"):
@@ -247,7 +357,6 @@ def _render_message(msg: dict) -> None:
 
 
 def _finalize_pending(idx: int, result: dict) -> None:
-    """Replace the pending message at index `idx` with the resumed result."""
     st.session_state.history[idx] = {
         "role": "assistant",
         "answer": result.get("answer"),
@@ -263,14 +372,25 @@ def _finalize_pending(idx: int, result: dict) -> None:
     st.session_state.pending_category = None
 
 
-# Render existing history
+# ---------------------------------------------------------------------------
+# Render chat history
+# ---------------------------------------------------------------------------
+
 for msg in st.session_state.history:
     _render_message(msg)
 
 
+# ---------------------------------------------------------------------------
+# Handle user input — show message IMMEDIATELY, then fetch response
+# ---------------------------------------------------------------------------
+
 def _handle_user_query(query: str) -> None:
+    # 1. Append user message to history IMMEDIATELY
     st.session_state.history.append({"role": "user", "content": query})
 
+
+def _fetch_response(query: str) -> None:
+    # 2. Call API and append assistant response
     try:
         resp = _api_chat(query, st.session_state.thread_id)
     except Exception as exc:
@@ -278,11 +398,12 @@ def _handle_user_query(query: str) -> None:
             {
                 "role": "assistant",
                 "answer": None,
-                "error": f"Lỗi gọi API: {exc}",
+                "error": f"Không thể kết nối đến hệ thống: {exc}",
                 "pending": False,
                 "idx": len(st.session_state.history),
             }
         )
+        st.session_state.waiting_for_response = False
         return
 
     st.session_state.thread_id = resp.get("thread_id", st.session_state.thread_id)
@@ -303,30 +424,39 @@ def _handle_user_query(query: str) -> None:
                 "idx": idx,
             }
         )
-        return
+    else:
+        st.session_state.history.append(
+            {
+                "role": "assistant",
+                "answer": resp.get("answer"),
+                "sources": resp.get("sources", []),
+                "category": resp.get("category"),
+                "model_info": resp.get("model_info"),
+                "error": resp.get("error"),
+                "pending": False,
+                "thread_id": resp.get("thread_id"),
+                "idx": idx,
+            }
+        )
+    st.session_state.waiting_for_response = False
 
-    st.session_state.history.append(
-        {
-            "role": "assistant",
-            "answer": resp.get("answer"),
-            "sources": resp.get("sources", []),
-            "category": resp.get("category"),
-            "model_info": resp.get("model_info"),
-            "error": resp.get("error"),
-            "pending": False,
-            "thread_id": resp.get("thread_id"),
-            "idx": idx,
-        }
-    )
 
+# --- Input handling ---------------------------------------------------------
 
-# --- input handling ---------------------------------------------------------
-
-_pending_input = st.session_state.pop("_pending_input", None)
-user_input = st.chat_input("Hỏi về luật giao thông, đăng kiểm, mức phạt...")
-if _pending_input and not user_input:
-    user_input = _pending_input
+user_input = st.chat_input("Nhập câu hỏi về luật giao thông...")
 
 if user_input:
+    # Show user message immediately
     _handle_user_query(user_input)
+    st.session_state.waiting_for_response = True
+    st.session_state._pending_query = user_input
+    st.rerun()
+
+# If waiting for response, show thinking indicator and fetch
+if st.session_state.get("waiting_for_response") and st.session_state.get("_pending_query"):
+    # Render the user message that was just added
+    with st.chat_message("assistant", avatar="⚖️"):
+        with st.spinner("🔍 Đang tra cứu văn bản pháp luật..."):
+            query = st.session_state.pop("_pending_query")
+            _fetch_response(query)
     st.rerun()

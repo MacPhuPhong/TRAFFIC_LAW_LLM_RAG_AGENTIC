@@ -1,1217 +1,1400 @@
 # BÁO CÁO KỸ THUẬT HỆ THỐNG
+## Traffic-Law RAG — Trợ lý Pháp lý Giao thông Việt Nam (v6.0)
 
-# Agentic RAG — Trợ lý Pháp lý Giao thông Việt Nam
+**Phiên bản:** 6.0 · **Ngày:** 25/04/2026
+**Tác giả:** Phong Mac · **Đồ án Tốt nghiệp**
+**Repo:** `traffic_rag/` · **Stack:** Python 3.11 · LangGraph · Qdrant · Gemini · FastAPI · Streamlit · Docker
 
-> **Phiên bản:** v5.8.1 Final · **Ngày:** 23/04/2026
-> **Công nghệ lõi:** LangGraph · Qdrant · Sentence-BERT (PhoBERT) · Google Gemini · FastAPI · Streamlit
-> **Repository:** [MacPhuPhong/TRAFFIC_LAW_LLM_RAG_AGENTIC](https://github.com/MacPhuPhong/TRAFFIC_LAW_LLM_RAG_AGENTIC)
+> Báo cáo này là tài liệu kỹ thuật **duy nhất, đầy đủ** cho toàn bộ hệ thống. Mỗi thành phần (ingestion, chunking, embedding, indexing, retrieval, generation, orchestration, deployment) đều được trình bày theo cấu trúc **Research → Quyết định → Kiến trúc chi tiết**: trước tiên đưa ra kết quả so sánh định lượng từ các ablation `research/` (RQ1-RQ9), sau đó giải thích tại sao hệ thống chọn phương án đang triển khai, cuối cùng mô tả đầy đủ mã nguồn / công thức / cấu hình thực tế.
 
 ---
 
 ## Mục lục
 
-1. [Tổng quan kiến trúc hệ thống](#1-tổng-quan-kiến-trúc-hệ-thống)
-2. [Giai đoạn 1 — Xử lý dữ liệu (Data Ingestion)](#2-giai-đoạn-1--xử-lý-dữ-liệu-data-ingestion)
-3. [Giai đoạn 2 — Phân đoạn ngữ nghĩa (Semantic Chunking)](#3-giai-đoạn-2--phân-đoạn-ngữ-nghĩa-semantic-chunking)
-4. [Giai đoạn 3 — Vector Embedding & Indexing (toán học chuyên sâu)](#4-giai-đoạn-3--vector-embedding--indexing-toán-học-chuyên-sâu)
-5. [Giai đoạn 4 — Hybrid Retrieval (Dense + BM25 + RRF + Cross-Reference)](#5-giai-đoạn-4--hybrid-retrieval-dense--bm25--rrf--cross-reference)
-6. [Giai đoạn 5 — Grounded Generation](#6-giai-đoạn-5--grounded-generation)
-7. [Giai đoạn 6 — Agentic Workflow (LangGraph)](#7-giai-đoạn-6--agentic-workflow-langgraph)
-8. [Giai đoạn 7 — Deployment & API](#8-giai-đoạn-7--deployment--api)
-9. [Phụ lục A — Tổng kết kỹ thuật](#phụ-lục-a--tổng-kết-kỹ-thuật)
-10. [Phụ lục B — Changelog v5.5 → v5.6](#phụ-lục-b--changelog-v55--v56)
-11. [Phụ lục C — Changelog v5.6 → v5.8.1](#phụ-lục-c--changelog-v56--v581)
+1. [Tổng quan hệ thống](#1-tổng-quan-hệ-thống)
+2. [Data Ingestion — Chuẩn hoá văn bản pháp luật](#2-data-ingestion)
+3. [Chunking — Cắt đoạn phân cấp theo Điều/Khoản/Điểm](#3-chunking--rq2)
+4. [Embedding — Biểu diễn vector đa ngôn ngữ](#4-embedding--rq3)
+5. [Indexing — Vector database lựa chọn và cấu hình](#5-indexing--rq4)
+6. [Hybrid Retrieval — Dense + Sparse + Sibling + Cross-ref](#6-hybrid-retrieval--rq9)
+7. [Generation — Prompt engineering và ràng buộc citation](#7-generation--rq5)
+8. [Agentic Workflow — LangGraph định tuyến đa intent](#8-agentic-workflow)
+9. [Deployment — API, UI, Docker và HITL](#9-deployment)
+10. [Phương pháp đánh giá — Công thức chi tiết](#10-phương-pháp-đánh-giá--công-thức-chi-tiết)
+11. [Đánh giá tổng thể — Baseline + Cost breakdown](#11-đánh-giá-tổng-thể-rq1--rq8)
+12. [Hạn chế và hướng phát triển](#12-hạn-chế--hướng-phát-triển)
+13. [Phụ lục](#13-phụ-lục)
 
 ---
 
-## 1. Tổng quan kiến trúc hệ thống
+## 1. Tổng quan hệ thống
 
-### 1.1 Mermaid architecture diagram
+### 1.1 Mục tiêu và phạm vi
+
+Hệ thống **Traffic-RAG** là trợ lý AI trả lời câu hỏi về pháp luật giao thông đường bộ Việt Nam theo quy định mới 2024–2025. Mục tiêu cụ thể:
+
+- **Trả lời đúng theo văn bản gốc** — mỗi câu trả lời trích dẫn chính xác tới cấp **điểm/khoản/điều** của Nghị định, Thông tư, Luật.
+- **Chống ảo giác (hallucination)** — từ chối khi ngữ cảnh không đủ thay vì bịa số tiền/số điểm.
+- **Xử lý đa ý (multi-intent)** — một câu hỏi có thể chứa 3–4 câu con (mức phạt + trừ điểm GPLX + tước bằng + xử lý phương tiện).
+- **Giải quyết cross-reference** — khi Điều A dẫn tới Điều B, hệ thống tự kéo cả B vào ngữ cảnh.
+- **Định tuyến đa intent** — tách biệt Q&A pháp luật / chit-chat / tra cứu web / out-of-scope.
+
+**Corpus:** 6 văn bản (tổng **~800 trang** chuẩn hoá), **2 705 chunks** sau phân đoạn phân cấp:
+
+| doc_id | Tên | Vai trò |
+|---|---|---|
+| `168/2024/NĐ-CP` | Nghị định 168/2024 xử phạt vi phạm hành chính | Mức phạt + trừ điểm GPLX (cốt lõi) |
+| `36/2024/QH15` | Luật TT-ATGT đường bộ | Luật gốc |
+| `35/2024/QH15` | Luật Đường bộ | Luật gốc |
+| `151/2024/NĐ-CP` | NĐ hướng dẫn Luật 36/2024 | Bổ trợ |
+| `47/2024/TT-BGTVT` | TT kỹ thuật, chu kỳ đăng kiểm | Kỹ thuật |
+| `79/2024/TT-BCA` | TT thủ tục đăng ký xe | Thủ tục |
+
+### 1.2 Sơ đồ kiến trúc tổng thể (v6.0)
+
+**Offline pipeline** — chạy một lần, tái chạy khi bổ sung văn bản mới:
 
 ```mermaid
-graph TD
-    A["PDF Luật / NĐ / TT"] --> B["Data Ingestion<br>pdfplumber + regex NFC"]
-    B --> C["Semantic Chunker<br>Hierarchical 3-Level<br>(Điều → Khoản → Điểm)"]
-    C --> D["all_chunks.jsonl<br>2.705 chunks"]
-    D --> E["Vector Indexing<br>multilingual-e5-small 384d → Qdrant (Cosine)"]
-    D --> F["BM25 Corpus<br>rank_bm25 · Vietnamese stopwords"]
-
-    G["User Query"] --> H["FastAPI /chat"]
-    H --> I["LangGraph Agent<br>AsyncSqliteSaver checkpoint"]
-    I --> J["Analyzer Node<br>(Intent + Standalone + Expansion)"]
-    J --> K{"Router"}
-    K -->|legal_rag| L["Legal RAG Node"]
-    K -->|chit_chat| M["Chit Chat"]
-    K -->|web_legal_search| N["Tavily Search"]
-    K -->|out_of_scope| O["Refuse"]
-
-    L --> P["Hybrid Retriever<br>Dense + BM25 + RRF<br>+ Sibling enrichment<br>+ Cross-reference pass"]
-    P --> Q["Generator<br>Gemini + 12 Rules<br>(Grounded)"]
-    Q --> R{"Refused?"}
-    R -->|No| Z["Final Answer"]
-    R -->|Yes| N
-
-    N --> S["HITL Gate<br>interrupt_before=web_finalize"]
-    S -->|Approved| Z
-    S -->|Rejected| Y["Refuse message"]
+flowchart TD
+    A[".docx / .pdf<br/>(Data/raw/)"] --> B["docx_to_markdown.py<br/>pdf_to_markdown.py<br/>parse XML + bảo toàn bảng"]
+    B --> C["Markdown<br/>(Data/preprocessed/)"]
+    C --> D["md_to_json.py<br/>regex Điều/Khoản/Điểm<br/>gắn metadata"]
+    D --> E["JSON phân cấp<br/>(Data/processed/)"]
+    E --> F["aggregator.py<br/>hierarchical_chunker.py"]
+    F --> G["all_chunks.jsonl<br/>2 705 chunks"]
+    G --> H["indexer.py<br/>E5-small embed 384d<br/>+ 'passage: ' prefix"]
+    H --> I[("Qdrant collection<br/>traffic_law_v3_e5<br/>+ BM25 JSONL cache")]
 ```
 
-> [!NOTE]
-> **Thay đổi ở v5.6:** node `risk_tag` đã bị **loại bỏ hoàn toàn** (node, state field, API field, UI banner). Câu trả lời RAG phát hành nguyên văn vì nội dung đã trích từ NĐ 168/2024 pháp điển. HITL **chỉ** chặn trên nhánh web-search. Xem [Phụ lục B](#phụ-lục-b--changelog-v55--v56).
+**Online pipeline** — mỗi request đi qua đồ thị state-machine do LangGraph điều phối:
 
-### 1.2 Bảng công nghệ sử dụng
+```mermaid
+flowchart TD
+    U["User query +<br/>chat_history"] --> AN["analyzer (Gemini)<br/>structured output"]
+    AN --> |category, standalone_q, expanded_q| R{"route_by<br/>_category"}
 
-| Lớp                  | Thành phần           | Công nghệ / Thư viện                                                          | Vai trò                                     |
-| -------------------- | -------------------- | ----------------------------------------------------------------------------- | ------------------------------------------- |
-| Ingestion            | PDF extraction       | `pdfplumber`                                                                  | Trích text + bảng (bbox-aware)              |
-| Ingestion            | Cleaning             | `regex` + `unicodedata` (NFC)                                                 | Khử nhiễu, chuẩn hoá                        |
-| Chunking             | Splitter             | [HierarchicalLegalSplitter](traffic_rag/source/ingestion/semantic_chunker.py) | 3-tier: Điều → Khoản → Điểm                 |
-| Embedding            | Encoder              | `intfloat/multilingual-e5-small` (XLM-RoBERTa-based, contrastive)              | 384-d sentence embedding (max_seq=512)      |
-| Vector DB            | Storage              | `Qdrant` (Docker, gRPC :6334)                                                 | Cosine search + payload filter              |
-| Lexical              | Sparse               | `rank_bm25.BM25Okapi`                                                         | In-memory BM25 index                        |
-| Fusion               | Ranker               | Reciprocal Rank Fusion (RRF, k=60)                                            | Kết hợp dense + sparse                      |
-| Reference resolution | Structural pass      | Regex `_REF_DIEU/_REF_KHOAN/_REF_DIEM`                                        | Lookup Điều/Khoản/Điểm đích danh            |
-| LLM                  | Analyzer + Generator | Google **Gemini 3.1 Flash Lite Preview** (via `langchain-google-genai`)       | Phân loại, chuẩn hoá, mở rộng, sinh trả lời |
-| Agent                | Orchestration        | `LangGraph` `StateGraph`                                                      | Đồ thị trạng thái có điều kiện              |
-| Checkpoint           | Memory               | `AsyncSqliteSaver`                                                            | Lưu chat_history + HITL resume              |
-| Fallback             | Web search           | `Tavily API` (hạn chế domain VN)                                              | Tra cứu khi corpus không có                 |
-| API                  | Backend              | `FastAPI` + `uvicorn`                                                         | REST async, 4 endpoint                      |
-| UI                   | Frontend             | `Streamlit`                                                                   | Chat + HITL review form                     |
-| Container            | Packaging            | `docker-compose`                                                              | Qdrant + app                                |
+    R -->|legal| LR["legal_rag<br/>node"]
+    R -->|chit_chat| CC["chit_chat<br/>node"]
+    R -->|web_search| WS["web_search<br/>(Tavily)"]
+    R -->|out_of_scope| OS["out_of_scope<br/>refusal template"]
 
-### 1.3 Các chỉ số cốt lõi
+    LR --> RET["TrafficHybridRetriever<br/>Dense(E5) ⊕RRF Sparse(BM25)<br/>→ Sibling ±2 khoản<br/>→ Cross-ref regex<br/>→ top_k=10"]
+    RET --> GEN["LegalAnswerGenerator<br/>SYSTEM_PROMPT P2<br/>(role + 12 rules)<br/>+ citation sanitation"]
+    GEN --> OUT[["{answer,<br/> sources[{doc_id,<br/> dieu, khoan, diem}]}"]]
 
-| Chỉ số                     | Giá trị                             | Nguồn                                                                          |
-| -------------------------- | ----------------------------------- | ------------------------------------------------------------------------------ |
-| Tổng văn bản pháp luật     | 20+ (Luật/NĐ/TT)                    | Thủ công curate                                                                |
-| Tổng chunks sau xử lý      | **2.705**                           | Log uvicorn `BM25 corpus built: 2705 docs`                                     |
-| Tổng token corpus          | 424.677                             | `BM25 corpus built: ... 424677 tokens`                                         |
-| Embedding dim              | 384                                 | multilingual-e5-small                                                          |
-| Qdrant collection          | `traffic_law_v3_e5`                 | [retriever.py:32](traffic_rag/source/rag_core/retriever.py#L32)                |
-| `top_k` default            | **10**                              | [nodes.py:176](traffic_rag/source/agent/nodes.py#L176)                         |
-| `top_k` broad queries      | **20**                              | [nodes.py:177](traffic_rag/source/agent/nodes.py#L177)                         |
-| `candidates_per_retriever` | 30                                  | [retriever.py:72](traffic_rag/source/rag_core/retriever.py#L72)                |
-| RRF constant `k`           | 60                                  | [retriever.py:71](traffic_rag/source/rag_core/retriever.py#L71)                |
-| Sibling `max_neighbors`    | 2 (±2 Khoản)                        | [retriever.py:164](traffic_rag/source/rag_core/retriever.py#L164)              |
-| Generator temperature      | 0.1                                 | [retriever & generator default](traffic_rag/source/rag_core/generator.py#L101) |
-| HITL gate                  | `interrupt_before=["web_finalize"]` | [graph.py:115](traffic_rag/source/agent/graph.py#L115)                         |
+    WS --> WF["web_finalize<br/>(HITL interrupt)"]
+    WF --> OUT
+    CC --> OUT
+    OS --> OUT
+```
+
+> **Ghi chú:** node `web_finalize` có `interrupt_before` — đồ thị tạm dừng, UI hiển thị snippet cho người dùng duyệt; khi resume mới tổng hợp câu trả lời.
+
+### 1.3 Tech stack
+
+| Layer | Thư viện / dịch vụ | Lý do chọn |
+|---|---|---|
+| Language | Python 3.11 | hỗ trợ type hint, pattern matching |
+| Orchestration | `langgraph` 0.2.x | state machine, HITL `interrupt_before` |
+| LLM wrapper | `langchain-google-genai` | Gemini flash tốc độ cao, chi phí thấp |
+| LLM gen | **Gemini 3.1 Flash Lite Preview** | 1M context, $0.075/1M in, $0.30/1M out |
+| Embedding | **`intfloat/multilingual-e5-small`** (384d, max_seq=512) | RQ3 winner (MRR 0.22) |
+| Vector DB | **Qdrant 1.7** (Docker) | hybrid, metadata filter, payload index |
+| Sparse | `rank_bm25` (BM25Okapi) | pure Python, dễ đồng bộ với Qdrant |
+| Web search | `tavily-python` | free tier, trả snippet dài |
+| Backend | `FastAPI` + `uvicorn` | async, WebSocket streaming |
+| Frontend | `Streamlit` | prototype nhanh, `st.chat_message` |
+| Trace/Eval | LangSmith (project `Traffic-RAG-Evaluation`) | RQ8 phân tích chi phí |
+| Container | Docker Compose | isolation Qdrant + API + UI |
+
+### 1.4 Tổng hợp kết quả research (teaser)
+
+Các ablation `research/` (chi tiết ở §3–§7 và §11) đã xác lập mọi lựa chọn thiết kế trong hệ thống:
+
+| RQ | Câu hỏi | Kết luận | Quyết định |
+|---|---|---|---|
+| RQ1 | Gemini-only / Vanilla RAG / Agentic RAG khác gì? | Agentic Cit-R = 0.56 vs Gemini 0.20 | **Dùng Agentic RAG (LangGraph)** |
+| RQ2 | Hierarchical vs Fixed-512? | Hierarchical MRR 0.16 vs 0.07 | **Hierarchical chunker** |
+| RQ3 | sbert / mpnet / e5-small? | e5-small MRR 0.22, nhanh nhất, max_seq=512 | **e5-small** (migrate từ sbert) |
+| RQ4 | Qdrant / Chroma / FAISS? | Cùng chất lượng; FAISS 200× nhanh nhưng không có metadata filter | **Qdrant** (giữ filter + payload) |
+| RQ5 | Prompt không role / role / role+rules? | Rules nâng Cit-R 0.36 → 0.48 và refusal 0% → 72% | **P2 full rules** |
+| RQ8 | Đâu là cost center? | `legal_rag` node 39k token, $0.010/query | Optimize RAG trước web_search |
+| RQ9 | Rewrite query có lợi không? | Rewrite LÀM HẠI: MRR −35%, latency +45% | **TẮT rewrite** ở turn đầu |
 
 ---
 
-## 2. Giai đoạn 1 — Xử lý dữ liệu (Data Ingestion)
+## 2. Data Ingestion
 
-### 2.1 Sơ đồ pipeline
+### 2.1 Tổng quan pipeline
+
+Ingestion gồm 3 bước chính, chạy offline, idempotent:
 
 ```
-Data/raw/{luat,nghidinh,thongtu}/*.pdf
-       │
-       ▼  pdfplumber + clean_*.py
-Data/cleaned/{luat,nghidinh,thongtu}/*.md
+.docx  →  docx_to_markdown.py  →  preprocessed/*.md
+         │
+.pdf   →  pdf_to_markdown.py   →  preprocessed/*.md
+         │
+         ▼
+          md_to_json.py          →  processed/*.json  (phân cấp Điều/Khoản/Điểm)
+          │
+          ▼
+          aggregator.py          →  Data/all_chunks.jsonl  (2 705 chunks)
 ```
 
-Ba script làm sạch chuyên biệt cho 3 loại văn bản:
+### 2.2 Bước 1 — .docx → Markdown
 
-| Script                                                                        | Đối tượng                | Quy ước đặt tên        |
-| ----------------------------------------------------------------------------- | ------------------------ | ---------------------- |
-| [clean_luat_pdfs.py](traffic_rag/source/ingestion/clean_luat_pdfs.py)         | Luật (QH)                | Luật 35, 36, 23…       |
-| [clean_nghidinh_pdfs.py](traffic_rag/source/ingestion/clean_nghidinh_pdfs.py) | Nghị định (CP)           | NĐ 168, 336, 100, 123… |
-| [clean_thongtu_pdfs.py](traffic_rag/source/ingestion/clean_thongtu_pdfs.py)   | Thông tư (BCA/BGTVT/BTC) | TT 79, 51, 30, 46…     |
+**File:** [source/ingestion/docx_to_markdown.py](../source/ingestion/docx_to_markdown.py)
 
-### 2.2 Năm bước xử lý chi tiết
+- Dùng `python-docx` đọc trực tiếp XML của `.docx`.
+- **Bảo toàn bảng** — biểu ở NĐ 168/2024 chứa mức phạt theo cột (từ, đến, tước GPLX, trừ điểm) → parse sang markdown table `| Hành vi | Phạt tiền | Tước bằng | Trừ điểm |` để embedding giữ cấu trúc.
+- **Chuẩn hoá whitespace** (`\u00a0` → space, `\u200b` xoá, xuống dòng kép → `\n`).
+- Xuất heading cấp Điều dưới dạng `## Điều 6. Tốc độ...` để bước sau regex bóc tách.
 
-**Bước 1 — Trích xuất (Extraction) với bbox-based exclusion**
+### 2.3 Bước 2 — Markdown → JSON phân cấp
+
+**File:** [source/ingestion/md_to_json.py](../source/ingestion/md_to_json.py)
+
+Mỗi văn bản trở thành 1 JSON với cấu trúc 4 tầng:
 
 ```python
-with pdfplumber.open(pdf_path) as pdf:
-    for page in pdf.pages:
-        bboxes = [t.bbox for t in page.find_tables()]
-        if bboxes:
-            filtered_page = page.filter(
-                lambda o: not any(inside(o, b) for b in bboxes)
-            )
-            page_text = filtered_page.extract_text()
-
-        for table in page.extract_tables(table_settings=strict):
-            md = table_to_markdown(table)
-```
-
-> [!IMPORTANT]
-> Loại trừ text nằm **bên trong bounding box của bảng** khi trích text thô, sau đó trích bảng riêng sang Markdown. Nếu không làm, mỗi dòng bảng sẽ xuất hiện **hai lần** (một lần dạng text thuần, một lần trong Markdown bảng) và phá hỏng BM25 + embedding.
-
-**Bước 2 — Chuẩn hoá Unicode + khử nhiễu**
-
-```python
-text = unicodedata.normalize("NFC", raw_text)
-
-RE_HEADER_NOISE = r"^\d{1,2}/\d{1,2}/\d{2,4},.*about:blank$"
-RE_FOOTER_NOISE = r"about:blank\s+\d+/\d+|Thư viện pháp luật"
-RE_PAGE_NUM     = r"^(Trang\s+)?\d+(\s*/\s*\d+)?$"
-
-# Đánh dấu heading Markdown để splitter regex phát hiện
-"Chương I…"   → "# Chương I…"
-"Điều 5: …"   → "## Điều 5: …"
-
-# Bold ngày tháng quan trọng
-"ngày 15 tháng 3 năm 2024" → "**ngày 15 tháng 3 năm 2024**"
-```
-
-**Bước 3 — Nối dòng thông minh (line merging)**
-
-Chỉ nối khi đồng thời thoả 3 điều kiện:
-
-1. Dòng trước kết thúc bằng chữ cái / dấu phẩy / chấm phẩy (regex `RE_MERGE_END`).
-2. Dòng sau bắt đầu bằng chữ thường.
-3. Dòng sau **không** phải heading (Điều/Khoản/Chương).
-
-Tránh sự cố nối nhầm giữa 2 khoản độc lập — hay xảy ra khi PDF xuất ra text ngắt dòng không nhất quán.
-
-**Bước 4 — Per-file strategy (chiến lược riêng cho từng văn bản)**
-
-Một số Nghị định bị bãi bỏ một phần; mỗi file có config riêng:
-
-```python
-FILE_STRATEGIES = {
-    "nd168_2024_…": {"keep_all": True},                 # Giữ toàn bộ
-    "nd100_2019_…": {                                    # Chỉ giữ mảng đường sắt
-        "keep_all": False,
-        "include_section_keywords": ["đường sắt", "tàu hỏa"],
-        "exclude_section_keywords": ["đường bộ", "xe ô tô"],
-        "prepend_warning": "⚠️ Mảng đường bộ đã bị thay thế bởi NĐ 168/2024…",
-    },
+{
+  "doc_id": "168/2024/NĐ-CP",
+  "ten_van_ban": "Nghị định 168/2024/NĐ-CP...",
+  "issuer": "Chính phủ",
+  "document_type": "Nghị định",
+  "ngay_ban_hanh": "2024-12-26",
+  "effective_date": "2025-01-01",
+  "status": "active",
+  "topic": "xu_phat",          # xu_phat|ky_thuat|thu_tuc|luat
+  "articles": [
+    {
+      "dieu": 6,
+      "dieu_title": "Xử phạt người điều khiển xe ô tô vi phạm quy tắc giao thông đường bộ",
+      "clauses": [
+        {
+          "khoan": 1,
+          "khoan_title": null,
+          "points": [
+            {"diem": "a", "content": "..."},
+            {"diem": "b", "content": "..."}
+          ]
+        }
+      ]
+    }
+  ]
 }
 ```
 
-**Bước 5 — Bảng → Markdown**
+**Regex cốt lõi** (trích từ `md_to_json.py`):
 
 ```python
-def table_to_markdown(table, annotate_diem_tru=False):
-    # Fill merged cells (bảng PDF hay có ô trống do merge cell)
-    last_seen = [""] * max_cols
-    for row in table:
-        for j, cell in enumerate(row):
-            if not cell and last_seen[j]:
-                cell = last_seen[j]          # kế thừa từ ô trên
-            last_seen[j] = cell or last_seen[j]
-    # Render pipe table:  | H1 | H2 |\n|---|---|\n| D1 | D2 |
+RE_DIEU  = re.compile(r"^#{1,3}\s*Điều\s+(\d+)\s*\.\s*(.+?)$", re.MULTILINE)
+RE_KHOAN = re.compile(r"^(\d+)\s*[\.\)]\s+(.+)$", re.MULTILINE)
+RE_DIEM  = re.compile(r"^([a-zđ])\s*[\)\.]\s+(.+)$", re.MULTILINE | re.IGNORECASE)
 ```
 
-Kèm tuỳ chọn `annotate_diem_tru=True` bôi đậm số điểm trừ GPLX trong cột cuối (hữu ích cho NĐ 168 — bảng trừ điểm là căn cứ pháp lý duy nhất).
+**Validation:** sau parse, chạy assertion — mọi Điều phải có ít nhất 1 khoản; mọi khoản phải có `content` hoặc ≥1 điểm. Lỗi parse được log ra `logs/md_to_json_*.log`.
 
-### 2.3 Danh sách văn bản pháp luật đã thu thập
+### 2.4 Bước 3 — Aggregator → JSONL
 
-| STT | Văn bản                                      | Mã số              | Trạng thái                    |
-| --- | -------------------------------------------- | ------------------ | ----------------------------- |
-| 1   | Luật Đường bộ 2024                           | 35/2024/QH15       | ✅ Hiệu lực                   |
-| 2   | Luật Trật tự ATGT 2024                       | 36/2024/QH15       | ✅ Hiệu lực                   |
-| 3   | NĐ Xử phạt VPHC đường bộ                     | **168/2024/NĐ-CP** | ✅ Hiệu lực (văn bản trụ cột) |
-| 4   | NĐ Xử phạt vận tải                           | 336/2025/NĐ-CP     | ✅ Hiệu lực                   |
-| 5   | NĐ Kinh doanh vận tải                        | 10/2020/NĐ-CP      | ✅ Hiệu lực                   |
-| 6   | TT Đăng ký xe                                | 79/2024/TT-BCA     | ✅ Hiệu lực                   |
-| 7   | TT Sửa đổi đăng ký xe                        | 51/2025/TT-BCA     | ✅ Hiệu lực                   |
-| 8   | TT Đăng kiểm ô tô                            | 30/2024/TT-BGTVT   | ✅ Hiệu lực                   |
-| 9   | TT Đào tạo sát hạch GPLX                     | 35/2024/TT-BGTVT   | ✅ Hiệu lực                   |
-| 10+ | …và 10+ văn bản khác (NĐ 123, TT 46, TT 47…) |                    |                               |
+**File:** [source/ingestion/aggregator.py](../source/ingestion/aggregator.py)
+
+Gộp các file JSON thành `Data/all_chunks.jsonl` (một dòng = một chunk với 2 trường `content` + `metadata`). Mỗi chunk có `chunk_id` duy nhất: `"{doc_id}|Đ{dieu}|K{khoan}|P{diem}"`.
+
+**Thống kê ingest (v6.0):**
+- Tổng chunks: **2 705**
+- Phân bổ theo doc_id: 168/2024 chiếm 46%, 36/2024 QH15 20%, 47/2024 TT-BGTVT 14%, còn lại 20%.
+- Độ dài chunk (token BPE tiếng Việt): p50=187, p95=456, max=812.
 
 ---
 
-## 3. Giai đoạn 2 — Phân đoạn ngữ nghĩa (Semantic Chunking)
+## 3. Chunking — RQ2
 
-### 3.1 Kiến trúc HierarchicalLegalSplitter
+### 3.1 Research: Hierarchical vs Fixed-512
 
-File: [source/ingestion/semantic_chunker.py](traffic_rag/source/ingestion/semantic_chunker.py)
+Chunking là tầng đầu tiên ảnh hưởng tới recall. Câu hỏi nghiên cứu: **cắt theo cấu trúc pháp luật (Điều/Khoản/Điểm) có tốt hơn cắt cố định 512 token?**
 
-Văn bản pháp luật Việt Nam có cấu trúc phân cấp:
+**Setup RQ2** ([research/scripts/rq2_chunking_ablation.py](../research/scripts/rq2_chunking_ablation.py)):
+- Encoder: **e5-small** (max_seq=512) để đảm bảo không bị truncate nếu chunk dài.
+- 2 collection Qdrant song song: `traffic_law_v3_e5` (hierarchical) và `traffic_law_fixed512` (FixedSizeChunker, 394 word/chunk, overlap 38 word).
+- 25 gold query, metric retrieval ở 2 cấp độ: **khoản-level** (chính xác) và **doc_id-level** (độ chi tiết thấp — chỉ so sánh đúng văn bản).
 
-```
-Chương → Điều → Khoản → Điểm
-```
+**Kết quả retrieval:**
 
-Splitter chia text theo **3 tầng** dựa trên ngưỡng token:
+| chunker | R@5 (khoản) | R@10 (khoản) | MRR (khoản) | nDCG@10 | Latency |
+|---|---:|---:|---:|---:|---:|
+| fixed_512 | 0.24 | 0.30 | 0.068 | 0.062 | 0.065s |
+| **hierarchical** | **0.32** | **0.44** | **0.157** | **0.171** | 0.23s |
 
-```mermaid
-graph TD
-    A["Full Document"] --> B["Tách theo Điều<br>regex: Điều \\d+"]
-    B --> C{"tokens ≤ THRESH_DIEU (600)?"}
-    C -->|Yes| D["Level 1: cả Điều = 1 chunk"]
-    C -->|No| E["Tách theo Khoản<br>regex: ^\\d+\\."]
-    E --> F{"tokens ≤ THRESH_KHOAN (500)?"}
-    F -->|Yes| G["Level 2: mỗi Khoản = 1 chunk"]
-    F -->|No| H["Tách theo Điểm<br>regex: ^[a-z]\\)"]
-    H --> I["Level 3: mỗi Điểm = 1 chunk"]
-```
+**Kết quả end-to-end (vanilla RAG trên cùng 25 câu):**
 
-### 3.2 Regex phát hiện cấu trúc
+| chunker | F1 | ROUGE-L | Cit-R (khoản) | Cit-R (doc) | Refusal |
+|---|---:|---:|---:|---:|---:|
+| fixed_512 | 0.254 | 0.214 | 0.36 | **0.64** | 0.44 |
+| hierarchical | 0.183 | 0.155 | **0.44** | 0.48 | 0.56 |
 
-```python
-RE_DIEU  = re.compile(r"(?:##\s*)?Điều\s+(\d+)[.:]\s*(.*)")
-RE_KHOAN = re.compile(r"^(\d+)\.(?=\s+[A-ZÀ-Ỹ])", re.MULTILINE)
-RE_DIEM  = re.compile(r"^([a-z])\)(?=\s+)",       re.MULTILINE)
-```
+![RQ2 Retrieval](../research/results/figures/rq2_chunking_retrieval.png)
+![RQ2 Answer](../research/results/figures/rq2_chunking_answer.png)
+![RQ2 Per-category](../research/results/figures/rq2_chunking_per_category.png)
 
-Lookahead `(?=\s+[A-ZÀ-Ỹ])` tránh false-positive với số ngẫu nhiên trong nội dung (ví dụ "1. 500.000 đồng" không phải mở khoản mới).
+### 3.2 Diễn giải kết quả
 
-### 3.3 Ngưỡng split (thresholds)
+- **MRR gấp 2.3×** khi cắt phân cấp → chunk đúng khoản nhảy lên top-1 thường xuyên hơn, còn fixed-512 hay chèn câu từ Điều lân cận gây nhiễu vector.
+- **Cit-R khoản tăng 22%** nhờ chunk trùng ranh giới trích dẫn — generator chỉ cần copy metadata của chunk đó.
+- **F1/ROUGE thấp hơn ở hierarchical** là **hiện tượng "càng đúng càng ngắn"** — answer trích đúng khoản thường súc tích, không chứa trailing boilerplate nên n-gram overlap thấp. Điều này được xác nhận qua **refusal rate cao hơn** (56% vs 44%): hierarchical từ chối đúng khi khoản thật sự không có, còn fixed-512 "trả lời tràn" sang Điều kế cận.
+- **Cit-R(doc) nghịch đảo** (fixed-512 cao hơn): vì chunk fixed bao gồm nhiều khoản kề nhau → dễ trúng doc_id đúng nhưng khoản sai. Đây là hiện tượng **doc-level false-positive**.
 
-| Tham số        | Giá trị   | Ý nghĩa                                                       |
-| -------------- | --------- | ------------------------------------------------------------- |
-| `THRESH_DIEU`  | 600 token | Điều > 600 token → split xuống Khoản                          |
-| `THRESH_KHOAN` | 500 token | Khoản > 500 token → split xuống Điểm                          |
-| `MIN_CHUNK`    | 30 token  | Chunk < 30 token → drop (quá ngắn, vô nghĩa về mặt retrieval) |
+### 3.3 Quyết định: Hierarchical chunker
 
-### 3.4 Ước lượng token tiếng Việt
+Hệ thống production dùng **HierarchicalChunker** (file [source/ingestion/hierarchical_chunker.py](../source/ingestion/hierarchical_chunker.py)). Mỗi khoản là một chunk độc lập; nếu khoản chứa >1 điểm, có 2 chế độ:
 
-```python
-def count_tokens(text: str) -> int:
-    words = len(text.split())
-    return int(words * 1.3)
-```
+1. **Mode `inline`** (mặc định): điểm nằm trong cùng chunk với khoản → ngữ cảnh trọn vẹn.
+2. **Mode `split_point`**: điểm có mức phạt riêng (chunk có field `diem`) — bật khi khoản >600 token.
 
-> [!NOTE]
-> Hệ số 1.3× là ước lượng empirical cho tiếng Việt với BPE/WordPiece subword. Đủ tốt cho logic cutoff — không cần gọi tokenizer thực (tránh dependency nặng & chi phí CPU trong vòng lặp chunker).
-
-### 3.5 Post-processing
-
-**Regex Refinement — sửa lỗi ngắt dòng từ PDF:**
+**Pseudocode:**
 
 ```python
-def refine_content(text):
-    text = re.sub(r'(\s*-\s*)\n\s*', r'\1', text)              # từ bị gạch nối ngắt dòng
-    text = re.sub(r'(?<=[a-zà-ỹ])\n(?=[a-zà-ỹ])', ' ', text)   # giữa câu
-    text = re.sub(r'^-{3,}$', '', text, flags=re.M)            # đường kẻ trang trí
-    text = re.sub(r'\n{3,}', '\n\n', text)                     # gộp dòng trống dư thừa
+for article in doc.articles:
+    for clause in article.clauses:
+        base = f"{doc.ten_van_ban}\nĐiều {article.dieu}. {article.dieu_title}\n"
+        base += f"Khoản {clause.khoan}. {clause.content or ''}"
+        if clause.points:
+            if len(base) > THRESHOLD_SPLIT:
+                emit_chunk(base, level=2)  # khoản
+                for p in clause.points:
+                    emit_chunk(f"{base}\nĐiểm {p.diem}: {p.content}",
+                               diem=p.diem, level=3)
+            else:
+                inline = base + "\n" + "\n".join(f"- {p.diem}) {p.content}"
+                                                  for p in clause.points)
+                emit_chunk(inline, level=2)
+        else:
+            emit_chunk(base, level=2)
 ```
 
-**Legal Styling — bold thông tin quan trọng:**
+### 3.4 Kiến trúc metadata schema
 
-```python
-"phạt tiền từ 18.000.000 đồng đến 20.000.000 đồng"
-  → "**phạt tiền từ 18.000.000 đồng đến 20.000.000 đồng**"
+Mỗi chunk mang **15 trường metadata** phục vụ filter/display:
 
-"tước quyền sử dụng GPLX từ 02 tháng đến 04 tháng"
-  → "**tước quyền sử dụng GPLX từ 02 tháng đến 04 tháng**"
-```
-
-Bold không ảnh hưởng đến BM25 (tokenizer lọc dấu câu/markdown), nhưng giúp LLM đọc dễ hơn và trích dẫn chính xác hơn trong prompt context.
-
-**Context Enrichment — chèn ngữ cảnh vào đầu chunk:**
-
-```python
-content = f"Văn bản: {ten_van_ban} | Điều {dieu}: {dieu_title}\n{content}"
-
-# Nếu chunk thuộc văn bản đã bãi bỏ một phần:
-content = f"> ⚠️ {warning}\n\n{content}"
-```
-
-### 3.6 Deduplication & noise filter
-
-```python
-FORM_NOISE_KEYWORDS = ['sổ theo dõi', 'biên bản phân công', 'phiếu đăng ký', …]
-
-# MD5 hash toàn bộ content → drop duplicate
-h = hashlib.md5(chunk['content'].encode()).hexdigest()
-if h not in seen_hashes:
-    seen_hashes.add(h); unique_chunks.append(chunk)
-```
-
-### 3.7 Metadata schema
-
-Mỗi chunk gắn metadata đầy đủ — được Qdrant dùng làm payload filter và retriever dùng cho sibling enrichment + cross-reference lookup:
-
-```yaml
-chunk_id: "168_2024_ND_CP_dieu6_khoan9_diemc"
-doc_id: "168/2024/NĐ-CP"
-ten_van_ban: "Nghị định 168/2024/NĐ-CP (Xử phạt VPHC đường bộ)"
-issuer: "Chính phủ"
-document_type: "nghidinh"
-status: "active"
-effective_date: "2025-01-01"
-topic: "Xử phạt vi phạm giao thông"
-dieu: 6
-dieu_title: "Xử phạt ô tô"
-khoan: 9
-diem: "c"
-level: 3
-token_estimate: 245
-```
-
-### 3.8 Output
-
-- **Markdown files**: mỗi chunk → 1 file `.md` với YAML frontmatter.
-- **JSONL export**: toàn bộ → [all_chunks.jsonl](traffic_rag/Data/all_chunks.jsonl) (đầu vào cho Qdrant indexer và BM25 corpus).
-
----
-
-## 4. Giai đoạn 3 — Vector Embedding & Indexing (toán học chuyên sâu)
-
-### 4.1 Mô hình Embedding: multilingual-e5-small
-
-- **Model HF:** `intfloat/multilingual-e5-small`
-- **Kiến trúc nền:** XLM-RoBERTa-base (12 layers, 384 hidden) — fine-tune contrastive trên ~1 tỷ cặp văn bản đa ngôn ngữ.
-- **Dim:** 384 · **Max seq length:** 512 · **Ngôn ngữ:** ~100 ngôn ngữ (có tiếng Việt trong corpus pretrain).
-
-> **Lý do thay thế `vietnamese-sbert` (từ v5.8.2 → v6.0):** benchmark nội bộ ([RQ3 ablation](../research/report/analysis.md#rq3--so-sánh-mô-hình-embedding)) cho thấy `multilingual-e5-small` đạt **MRR 0.220 vs 0.072 (~3×)**, **Recall@10 0.46 vs 0.32**, đồng thời **encode nhanh 2.5×** và **giảm 50% chiều vector** (384 vs 768) → tiết kiệm RAM Qdrant, tốc độ search cao hơn. Cũng quan trọng: `max_seq=512` (so với 256 của sbert) không truncate các khoản dài nhiều điểm.
-
-#### 4.1.1 E5 — contrastive sentence embedding
-
-```
-Input Text (prefix: "query: " | "passage: ")
-             ↓
-   XLM-RoBERTa Encoder (12 layers, 384 hidden)
-             ↓
-        Hidden states: h₁, h₂, …, hₙ ∈ ℝ³⁸⁴
-             ↓
-             Mean Pooling
-             ↓
-        Sentence embedding e ∈ ℝ³⁸⁴
-             ↓
-        L2 Normalize → ê ∈ S³⁸³ (sphere)
-```
-
-**Mean Pooling trên token thường (không dùng CLS):**
-
-$$\mathbf{e} = \frac{\sum_{i=1}^{n}m_i\cdot\mathbf{h}_i}{\sum_{i=1}^{n}m_i},\quad \mathbf{h}_i\in\mathbb{R}^{384},\ m_i\in\{0,1\}\ \text{(attention mask)}$$
-
-#### 4.1.2 Task-specific Prefix — đặc điểm then chốt của E5
-
-Khác SBERT, E5 **bắt buộc** gắn prefix vào input:
-
-| Vai trò đoạn văn | Prefix áp dụng | Khi nào |
+| Trường | Kiểu | Mục đích |
 |---|---|---|
-| Câu truy vấn (ngắn, có mục đích hỏi) | `"query: "` | Lúc gọi `retriever.retrieve(q)` |
-| Đoạn văn bản trong corpus | `"passage: "` | Lúc indexer embed từng chunk |
+| `chunk_id` | string | khoá duy nhất |
+| `doc_id` | string (KW idx) | filter theo văn bản |
+| `ten_van_ban` | string | display |
+| `issuer` | string | bộ ban hành |
+| `document_type` | string | Nghị định / Luật / TT |
+| `status` | "active" (KW idx) | filter active-only |
+| `effective_date` | ISO date (KW idx) | lọc hiệu lực |
+| `topic` | string (KW idx) | `xu_phat`/`ky_thuat`/... |
+| `dieu` | int | cấp điều |
+| `dieu_title` | string | tiêu đề điều |
+| `khoan` | int/null | cấp khoản |
+| `diem` | string/null | cấp điểm |
+| `level` | 1/2/3 | độ sâu chunk |
+| `source_file` | string | đường dẫn gốc |
+| `token_estimate` | int | len(content)/4 |
 
-Tại sao cần? Trong giai đoạn fine-tune, E5 học phân biệt 2 role này bằng contrastive loss bất đối xứng. Bỏ prefix → model rơi vào "neutral mode" → mất ~5–10% recall.
+4 trường có **payload index Qdrant** (`doc_id`, `status`, `effective_date`, `topic`) cho phép filter O(log n) khi query.
 
-Code tương ứng:
-- [retriever.py](traffic_rag/source/rag_core/retriever.py): helper `_e5_query_prefix(model_name)` tự động thêm `"query: "` nếu tên model chứa `e5`.
-- [indexer.py](traffic_rag/source/indexing/indexer.py): hằng `PASSAGE_PREFIX` tự kích hoạt, gắn vào mỗi chunk trước khi `model.encode(...)`.
+---
 
-#### 4.1.3 Contrastive Training — cách E5 được train
+## 4. Embedding — RQ3
 
-E5 train theo InfoNCE loss với hàng trăm triệu cặp văn bản (query, positive passage) từ CC-News, Wikipedia, Reddit, S2ORC, Common Crawl, v.v. — trên 100+ ngôn ngữ.
+### 4.1 Research: 3 encoder đa ngôn ngữ
 
-$$\mathcal{L}_{\text{InfoNCE}} = -\log\frac{\exp(\text{sim}(\mathbf{q},\mathbf{d}^{+})/\tau)}{\exp(\text{sim}(\mathbf{q},\mathbf{d}^{+})/\tau) + \sum_{j}\exp(\text{sim}(\mathbf{q},\mathbf{d}_{j}^{-})/\tau)}$$
+Encoder quyết định chất lượng recall. So sánh 3 mô hình đa ngữ có tiếng Việt:
 
-trong đó $\mathbf{d}^{+}$ là positive passage khớp với query, $\mathbf{d}_{j}^{-}$ là negatives (in-batch + hard negatives khai thác từ BM25), $\tau$ là temperature (~0.01).
+**Setup RQ3** ([research/scripts/rq3_embedding_ablation.py](../research/scripts/rq3_embedding_ablation.py)):
+- Encode toàn bộ 2 705 chunk + 25 query.
+- Metric: encode time, query latency, R@5/10/20, MRR, nDCG@10.
+- Prefix convention áp dụng đúng cho E5 (`passage: `/`query: `), các model khác plain text.
 
-Vì InfoNCE **tối ưu cosine similarity trực tiếp**, vector đầu ra đã "chuẩn hoá sẵn theo hướng" để dùng với cosine — rất hợp với Qdrant `Distance.COSINE`.
+**Kết quả:**
 
-#### 4.1.4 So sánh nhanh với vietnamese-sbert (baseline cũ)
+| Model | dim | max_seq | encode corpus (s) | query (ms) | R@5 | R@10 | MRR |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| vietnamese-sbert (PhoBERT) | 768 | 256 | 837.4 | 33.0 | 0.28 | 0.32 | 0.072 |
+| multilingual-mpnet-base-v2 | 768 | 128 | 441.2 | 40.5 | 0.32 | 0.34 | 0.148 |
+| **intfloat/multilingual-e5-small** | **384** | **512** | **333.4** | **13.2** | **0.40** | **0.46** | **0.220** |
 
-| Chỉ số | vietnamese-sbert (v5.8) | **multilingual-e5-small (v6)** |
-|---|---:|---:|
-| HF repo | `KeepItReal/vietnamese-sbert` | `intfloat/multilingual-e5-small` |
-| Backbone | PhoBERT-base | XLM-RoBERTa-base |
+![RQ3 Recall](../research/results/figures/rq3_embedding_recall.png)
+![RQ3 Speed](../research/results/figures/rq3_embedding_speed.png)
+
+### 4.2 Diễn giải: tại sao e5-small thắng
+
+- **MRR 3×** so với sbert: e5 được pretrain với **InfoNCE contrastive loss** trên **1 tỉ cặp query-passage** đa ngữ (mMARCO + MIRACL + Mr.TyDi) → hiểu "question-passage asymmetry" rất tốt, không cần fine-tune.
+- **Max-seq 512** > 256 của sbert và 128 của mpnet → chunk khoản dài không bị truncate.
+- **Dim 384** thay vì 768 → file index nhỏ hơn 50%, query vector serialization nhanh hơn.
+- **Encode nhanh nhất** (333s cho 2 705 chunk trên CPU) nhờ số param chỉ 118M (small variant của XLM-RoBERTa).
+
+### 4.3 Kiến trúc chi tiết E5-small
+
+#### 4.3.1 Backbone
+
+- Kiến trúc: **XLM-RoBERTa base** 12 layer, 12 head, hidden=384, ffn=1536.
+- Tokenizer: SentencePiece **250k vocab** — tốt cho tiếng Việt có dấu.
+- Pretrain stage 1 (weakly-supervised): CC100 + Wikipedia đa ngữ (94 thứ tiếng).
+- Pretrain stage 2 (contrastive): 1B cặp `(query, passage)` với **InfoNCE loss** (Noise-Contrastive Estimation):
+
+$$
+\mathcal{L}_{\text{InfoNCE}} \;=\; -\,\log\!\frac{\exp\!\bigl(\operatorname{sim}(q,\,p^{+})/\tau\bigr)}{\displaystyle\sum_{i=1}^{N}\exp\!\bigl(\operatorname{sim}(q,\,p_{i})/\tau\bigr)}
+$$
+
+Trong đó:
+
+| Ký hiệu | Ý nghĩa |
+|---|---|
+| $q$ | vector query sau mean-pool |
+| $p^{+}$ | vector passage **positive** (đúng với query) |
+| $p_i$ | một vector trong batch gồm 1 positive + $N{-}1$ negative |
+| $\operatorname{sim}(\cdot,\cdot)$ | cosine similarity (sau L2-normalize) |
+| $\tau$ | temperature, E5 dùng $\tau = 0.01$ |
+| $N$ | batch size (E5 dùng $N = 32$) + 7 hard-negative mined từ BM25 |
+
+**Trực giác:** công thức ép $q$ gần $p^{+}$ và xa mọi $p_i$ khác. Khi $\tau$ nhỏ, softmax "sắc" hơn → gradient ép mạnh tách positive/negative.
+
+#### 4.3.2 Mean pooling
+
+Sau khi forward qua 12 layer transformer, lấy **trung bình có trọng số attention_mask** của hidden state các token, rồi L2-normalize:
+
+$$
+\mathbf{v} \;=\; \frac{\displaystyle\sum_{i=1}^{L} m_i \,\mathbf{h}_i}{\displaystyle\sum_{i=1}^{L} m_i}
+\qquad\qquad
+\mathbf{v}_{\text{norm}} \;=\; \frac{\mathbf{v}}{\lVert\mathbf{v}\rVert_2}
+$$
+
+Với:
+
+- $L$: độ dài chuỗi (≤ 512 với E5-small).
+- $\mathbf{h}_i \in \mathbb{R}^{384}$: hidden state của token thứ $i$ ở layer cuối.
+- $m_i \in \{0,1\}$: attention mask (0 nếu là padding).
+- $\lVert\mathbf{v}\rVert_2 = \sqrt{\sum_k v_k^{2}}$: chuẩn $L_2$.
+
+**Tại sao normalize?** Sau khi $\lVert \mathbf{v}\rVert_2 = 1$, cosine similarity rút gọn về dot product:
+
+$$
+\operatorname{sim}(\mathbf{a},\mathbf{b}) \;=\; \frac{\mathbf{a}\cdot\mathbf{b}}{\lVert\mathbf{a}\rVert\lVert\mathbf{b}\rVert} \;=\; \mathbf{a}\cdot\mathbf{b}
+$$
+
+HNSW trong Qdrant chỉ cần dot-product O($d$) thay vì cosine đầy đủ → **nhanh hơn ~2×**.
+
+#### 4.3.3 Prefix convention (BẮT BUỘC)
+
+E5 được train với hai prefix riêng biệt; **dùng sai prefix = mất ~30% recall**.
+
+| Trường hợp | Prefix | Khi nào |
+|---|---|---|
+| Document encoding (indexing) | `"passage: "` | trong `indexer.py` |
+| Query encoding (retrieval) | `"query: "` | trong `retriever.py` |
+
+**Code thực tế** ([source/indexing/indexer.py:42](../source/indexing/indexer.py#L42)):
+
+```python
+PASSAGE_PREFIX = "passage: " if "e5" in EMBEDDING_MODEL.lower() else ""
+...
+texts = [PASSAGE_PREFIX + c["content"] for c in chunks]
+```
+
+Trong retriever ([source/rag_core/retriever.py](../source/rag_core/retriever.py)):
+
+```python
+QUERY_PREFIX = "query: "
+...
+q_vec = self.model.encode(QUERY_PREFIX + query, normalize_embeddings=True)
+```
+
+### 4.4 So sánh trực quan sbert ↔ e5-small
+
+| Tiêu chí | vietnamese-sbert | **e5-small (prod)** |
+|---|---|---|
+| Params | 135M | 118M |
 | Dim | 768 | **384** |
-| Max seq | 256 | **512** |
-| MRR (25-query gold) | 0.072 | **0.220** (≈3×) |
-| Recall@10 | 0.32 | **0.46** |
-| Corpus encode (2.705 chunks, CPU) | 837 s | **333 s** (2.5× nhanh) |
-| Query encode | 33 ms | **13 ms** |
+| Max seq | 256 (truncate khoản dài) | **512** |
+| Loss | MSE (teacher distillation) | **InfoNCE contrastive** |
+| Training data | Vietnamese parallel corpus | 1B multilingual pairs |
+| MRR (25 gold) | 0.072 | **0.220** (×3) |
+| Query latency | 33 ms | **13 ms** |
 
-Kết quả benchmark chi tiết: [research/report/analysis.md §RQ3](../research/report/analysis.md#rq3--so-sánh-mô-hình-embedding).
+### 4.5 Migration sbert → e5-small (thực hiện 25/04/2026)
 
-### 4.2 Cosine Similarity — thước đo tương đồng
+1. Đổi constant `EMBEDDING_MODEL="intfloat/multilingual-e5-small"`, `VECTOR_SIZE=384`.
+2. Tạo collection mới `traffic_law_v3_e5` — **giữ `traffic_law_v2`** làm fallback.
+3. Re-embed toàn bộ 2 705 chunk với `"passage: "` prefix.
+4. Validation 3 truy vấn mẫu — **3/3 PASS** (NĐ 168/2024, TT 47/2024, TT 79/2024).
+5. Cập nhật env `COLLECTION_NAME=traffic_law_v3_e5` ở [api/main.py](../api/main.py).
 
-$$\text{sim}(\mathbf{q},\mathbf{d}) = \cos\theta = \frac{\mathbf{q}\cdot\mathbf{d}}{\|\mathbf{q}\|\cdot\|\mathbf{d}\|} = \frac{\sum_{i=1}^{384} q_i d_i}{\sqrt{\sum q_i^2}\cdot\sqrt{\sum d_i^2}}\in[-1,1]$$
+---
 
-> [!TIP]
-> **Tại sao Cosine thay vì Euclidean?** Cosine đo **hướng** vector, không đo **độ lớn**. Hai câu cùng nghĩa nhưng khác độ dài sẽ cùng hướng vector → cosine cao. Euclidean bị chi phối bởi độ lớn — không phù hợp cho text embedding.
+## 5. Indexing — RQ4
 
-**Normalized Embedding** (hệ thống bật `normalize_embeddings=True`):
+### 5.1 Research: Qdrant vs Chroma vs FAISS
 
-$$\hat{\mathbf{e}} = \frac{\mathbf{e}}{\|\mathbf{e}\|_2},\quad \|\hat{\mathbf{e}}\|_2 = 1$$
+Khi đã quyết encoder, câu hỏi tiếp theo: **vector DB nào phù hợp?**
 
-Khi đã chuẩn hoá, cosine đơn giản thành **dot product**:
+**Setup RQ4** ([research/scripts/rq4_vectordb_real.py](../research/scripts/rq4_vectordb_real.py)):
+- Cùng 2 705 point (dim 768, dùng mpnet cho thí nghiệm này để tránh re-embed).
+- Đo **100 query × lặp 25 câu** = 2 500 query cho mỗi backend.
+- Metric: p50/p95/mean latency, R@10 so với gold chunk, peak RSS (psutil).
 
-$$\text{sim}(\hat{\mathbf{q}},\hat{\mathbf{d}}) = \hat{\mathbf{q}}\cdot\hat{\mathbf{d}} = \sum_{i=1}^{384}\hat{q}_i\hat{d}_i$$
+**Kết quả:**
 
-→ Giảm chi phí từ $O(3d)$ (tính 2 norm + dot) xuống $O(d)$ tại thời điểm query — nhân lên với hàng nghìn document là tối ưu đáng kể.
+| Backend | p50 (ms) | p95 (ms) | R@10 | peak RSS (MB) | Ghi chú |
+|---|---:|---:|---:|---:|---|
+| Qdrant (server, HNSW) | 12.73 | 15.30 | 0.32 | 1118 | server riêng, có metadata filter |
+| Chroma (persistent, HNSW) | 9.78 | 12.68 | 0.32 | 1137 | in-process |
+| **FAISS (IVF-Flat nlist=64)** | **0.06** | **0.21** | 0.32 | 1149 | in-memory, không filter |
 
-### 4.3 Qdrant Collection
+![RQ4 Latency](../research/results/figures/rq4_latency_comparison.png)
+![RQ4 Memory-Recall](../research/results/figures/rq4_memory_recall_tradeoff.png)
 
-File: [source/indexing/indexer.py](traffic_rag/source/indexing/indexer.py)
+### 5.2 Diễn giải
+
+- **Recall giống nhau** (0.32 cho cả 3) — với 2 705 point, cả 3 thuật toán (Qdrant HNSW ef=100, Chroma HNSW, FAISS IVF-Flat nprobe=8) đều xấp xỉ exact.
+- **FAISS nhanh hơn 200×** (0.06 ms vs 12.7 ms) — nhưng không hỗ trợ **metadata filter** (filter `status="active"` AND `effective_date ≤ 2025`), không **payload persistence**, không **update/delete** online.
+- **Chroma < Qdrant** về latency nhưng Chroma **không HTTP API** (in-process → khó scale multi-worker FastAPI).
+- RSS gần như nhau (2 705 × 768 × 4 byte ≈ 8 MB cho vector; phần còn lại là Python + model).
+
+### 5.3 Quyết định: Qdrant 1.7 HNSW + payload index
+
+Với corpus 2 705 chunk hiện tại, latency 12ms là **không đáng kể** so với ~1 900ms gen LLM (RQ9). Đánh đổi: **từ bỏ tốc độ FAISS để giữ metadata filter** — cần cho filter `status="active"` và `effective_date`.
+
+### 5.4 Cấu hình Qdrant
+
+**File:** [source/indexing/indexer.py](../source/indexing/indexer.py)
 
 ```python
+COLLECTION_NAME = "traffic_law_v3_e5"
+VECTOR_SIZE = 384
+BATCH_EMBED = 64
+BATCH_UPSERT = 100
+
 client.create_collection(
-    collection_name="traffic_law_v3_e5",
-    vectors_config=VectorParams(size=384, distance=Distance.COSINE),
+    collection_name=COLLECTION_NAME,
+    vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE),
 )
 
-# Payload index cho metadata filtering (O(1) lookup trên keyword field)
-for field in ["doc_id", "status", "effective_date", "topic"]:
-    client.create_payload_index(
-        collection_name="traffic_law_v3_e5",
-        field_name=field,
-        field_schema=PayloadSchemaType.KEYWORD,
-    )
+for field, schema in [
+    ("doc_id",         PayloadSchemaType.KEYWORD),
+    ("status",         PayloadSchemaType.KEYWORD),
+    ("effective_date", PayloadSchemaType.KEYWORD),
+    ("topic",          PayloadSchemaType.KEYWORD),
+]:
+    client.create_payload_index(COLLECTION_NAME, field, schema)
 ```
 
-### 4.4 Quy trình indexing (batch)
+Mặc định HNSW `m=16, ef_construct=100`. Không override vì 2 705 point chưa cần fine-tune graph.
 
-```python
-# 1. Đọc JSONL
-chunks = [json.loads(line) for line in open(JSONL_PATH)]
+### 5.5 Thống kê sau indexing (v6.0)
 
-# 2. Batch embed (64 texts/batch trên CPU) — LƯU Ý prefix "passage: " cho E5
-texts = [PASSAGE_PREFIX + c["content"] for c in chunks]    # PASSAGE_PREFIX = "passage: "
-for i in range(0, total, BATCH_EMBED):                     # BATCH_EMBED = 64
-    vecs = model.encode(texts[i:i+BATCH_EMBED], normalize_embeddings=True)
-    all_vectors.extend(vecs.tolist())
-
-# 3. Batch upsert (100 points/batch)
-for i in range(0, total, BATCH_UPSERT):                    # BATCH_UPSERT = 100
-    points = [
-        PointStruct(id=j, vector=all_vectors[j], payload={**metadata, "content": …})
-        for j in range(i, min(i + BATCH_UPSERT, total))
-    ]
-    client.upsert(collection_name="traffic_law_v3_e5", points=points)
-```
-
-> [!NOTE]
-> **Tại sao lưu `content` trong payload?** Qdrant hỗ trợ stored payload. Lưu content trực tiếp giúp **tiết kiệm 1 round-trip** — không phải đọc lại JSONL sau khi có top-k ID. BM25 path cũng đọc từ cùng một `_payloads` list → không có hai nguồn sự thật.
+| Tham số | Giá trị |
+|---|---|
+| Collection | `traffic_law_v3_e5` |
+| Points | 2 705 |
+| Dim × Distance | 384 × Cosine |
+| Payload indexes | 4 KEYWORD |
+| Disk (vol Docker) | ~12 MB |
+| Index time (CPU) | 333 s embed + 8 s upsert |
+| Fallback | `traffic_law_v2` (sbert 768d) vẫn giữ |
 
 ---
 
-## 5. Giai đoạn 4 — Hybrid Retrieval (Dense + BM25 + RRF + Cross-Reference)
+## 6. Hybrid Retrieval — RQ9
 
-File: [source/rag_core/retriever.py](traffic_rag/source/rag_core/retriever.py)
+### 6.1 Research: Query rewrite có lợi không?
 
-### 5.1 Kiến trúc tổng
+Một giả định phổ biến: LLM viết lại câu hỏi thành ngôn ngữ pháp lý sẽ giúp retriever. **Câu hỏi:** analyzer có nên expand query trước khi retrieve không?
+
+**Setup RQ9** ([research/scripts/rq9_rewrite_ablation.py](../research/scripts/rq9_rewrite_ablation.py)):
+- 2 variant × 25 gold query:
+  - **NO_REWRITE:** dùng thẳng câu user cho cả retriever và generator.
+  - **REWRITE:** analyzer sinh `(standalone_query, expanded_query)`; retriever dùng `expanded_query`, generator trả lời `standalone_query`.
+- Cùng retriever (`TrafficHybridRetriever`, top_k=10), cùng generator (P2).
+
+**Kết quả:**
+
+| variant | R@5 | R@10 | MRR | nDCG@10 | F1 | ROUGE-L | Cit-R | Cit-F1 | Refusal | Latency |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| **NO_REWRITE** | **0.40** | **0.46** | **0.197** | **0.212** | 0.259 | 0.208 | **0.44** | **0.233** | 0.56 | **1.87s** |
+| REWRITE | 0.34 | 0.42 | 0.127 | 0.144 | 0.274 | 0.228 | 0.38 | 0.214 | 0.52 | 2.72s |
+
+![RQ9 Comparison](../research/results/figures/rq9_rewrite_comparison.png)
+![RQ9 Per-category](../research/results/figures/rq9_rewrite_per_category.png)
+
+### 6.2 Diễn giải: rewrite làm HẠI retrieval
+
+- **MRR giảm 35%**, R@10 giảm 4 điểm khi bật rewrite.
+- Nguyên nhân: analyzer có xu hướng chèn từ pháp lý boilerplate ("theo quy định của pháp luật", "Nghị định số", "xử phạt vi phạm hành chính") → query vector bị kéo về **average embedding** của corpus, giảm tính phân biệt.
+- **E5-small pretrain 1B cặp tự nhiên** đã hiểu câu dân sinh — không cần hạ-cấp thành "legal-ese".
+- **Latency tăng 45%** (1.87s → 2.72s) do thêm 1 round LLM (analyzer). Nếu rewrite không có lợi retrieval, đây là chi phí thuần tuý.
+- **F1/ROUGE cao nhẹ ở REWRITE** (0.274 vs 0.259) do generator thấy câu chuẩn mực hơn, không nói lên chất lượng ngữ cảnh.
+
+### 6.3 Quyết định: TẮT rewrite ở turn đầu, giữ analyzer cho routing
+
+Analyzer **vẫn cần** cho:
+1. **Category classification** (legal / chit_chat / web_search / out_of_scope) — routing LangGraph.
+2. **Standalone resolution khi có history** — "Còn trường hợp xe máy thì sao?" → "Mức phạt xe máy vượt đèn đỏ?".
+
+**Thay đổi trong [source/agent/nodes.py](../source/agent/nodes.py):**
+
+```python
+if not state.get("chat_history"):
+    expanded_query = raw_q          # bypass rewrite turn đầu
+else:
+    expanded_query = analyzer_out.expanded_query
+```
+
+### 6.4 Kiến trúc TrafficHybridRetriever
+
+**File:** [source/rag_core/retriever.py](../source/rag_core/retriever.py)
+
+Pipeline 4 giai đoạn:
+
+```
+query
+  ├── Dense (Qdrant + E5)      ──┐
+  └── Sparse (BM25Okapi)       ──┤
+                                 ├── Reciprocal Rank Fusion (k=60) → top_k*2
+                                 │
+                                 └── Sibling enrichment (±2 khoản)
+                                        │
+                                        └── Cross-reference pass (regex)
+                                               │
+                                               └── top_k=10 (final)
+```
+
+#### 6.4.1 Dense leg — Qdrant
+
+```python
+q_vec = self.model.encode("query: " + query, normalize_embeddings=True).tolist()
+dense_hits = self.qdrant.search(
+    collection_name=COLLECTION_NAME,
+    query_vector=q_vec,
+    query_filter=Filter(must=[FieldCondition(key="status",
+                                             match=MatchValue(value="active"))]),
+    limit=top_k * 2,
+)
+```
+
+#### 6.4.2 Sparse leg — BM25Okapi
+
+```python
+from rank_bm25 import BM25Okapi
+tokenized_corpus = [vn_tokenize(c["content"]) for c in all_chunks]
+self.bm25 = BM25Okapi(tokenized_corpus, k1=1.5, b=0.75)
+bm25_scores = self.bm25.get_scores(vn_tokenize(query))
+top_idx = np.argsort(-bm25_scores)[:top_k * 2]
+```
+
+Tokenizer VN dùng `pyvi.ViTokenizer.tokenize(...).split()` — xử lý đúng từ ghép ("vượt\_đèn\_đỏ").
+
+**Công thức BM25 Okapi** (với $k_1 = 1.5$, $b = 0.75$):
+
+$$
+\operatorname{score}(D, Q) \;=\; \sum_{t \in Q} \operatorname{IDF}(t) \,\cdot\, \frac{f(t, D)\,\bigl(k_1 + 1\bigr)}{f(t, D) + k_1\!\left(1 - b + b\,\dfrac{\lvert D\rvert}{\operatorname{avgDL}}\right)}
+$$
+
+$$
+\operatorname{IDF}(t) \;=\; \log\!\left(\frac{N - \operatorname{df}(t) + 0.5}{\operatorname{df}(t) + 0.5} + 1\right)
+$$
+
+| Ký hiệu | Ý nghĩa | Ví dụ với corpus Traffic-RAG |
+|---|---|---|
+| $D$ | document (chunk) | 1 khoản, trung bình 187 token |
+| $Q$ | query sau tokenize | `["vượt_đèn_đỏ", "ô_tô", "phạt"]` |
+| $t$ | 1 term trong $Q$ | `"vượt_đèn_đỏ"` |
+| $f(t, D)$ | số lần $t$ xuất hiện trong $D$ | 2 |
+| $\lvert D\rvert$ | độ dài $D$ tính theo token | 187 |
+| $\operatorname{avgDL}$ | độ dài trung bình trên corpus | 195 |
+| $N$ | tổng số chunk | **2 705** |
+| $\operatorname{df}(t)$ | số chunk chứa $t$ | 42 |
+| $k_1$ | term-frequency saturation | **1.5** (giảm effect của $f$ lớn) |
+| $b$ | length normalization strength | **0.75** (0 = tắt, 1 = toàn phần) |
+
+**Trực giác 2 tham số:**
+- $k_1$ càng lớn → càng "thưởng" khi từ xuất hiện nhiều lần. Chọn 1.5 cho văn bản pháp luật có từ khoá lặp.
+- $b$ càng lớn → càng phạt văn bản dài. Chọn 0.75 để khoản dài (>400 token) không bị "lấn át" khoản ngắn khi scoring.
+
+#### 6.4.3 RRF — Reciprocal Rank Fusion
+
+Sau dense và sparse, cần hợp nhất 2 danh sách top-K. **Vấn đề:** cosine $\in [-1, 1]$ còn BM25 $\in [0, +\infty)$ — không cộng trực tiếp được. **RRF** (Cormack 2009) chỉ dùng **thứ hạng** (rank) để né hoàn toàn việc normalize score:
+
+$$
+\operatorname{RRF}(d) \;=\; \sum_{\ell \in \mathcal{L}} \frac{1}{k + \operatorname{rank}_{\ell}(d)}
+$$
+
+Trong đó:
+
+- $\mathcal{L} = \{\text{dense},\; \text{sparse}\}$ — tập các ranker được fuse.
+- $\operatorname{rank}_{\ell}(d)$ — thứ hạng (bắt đầu từ 1) của document $d$ trong danh sách của ranker $\ell$. Nếu không xuất hiện trong top-K của $\ell$, coi rank là $+\infty$ (đóng góp = 0).
+- $k$ — hằng số damping. Hệ thống dùng $k = 60$ (mặc định TREC, chứng minh ổn định cho corpus <10 000 doc).
+
+**Ví dụ:** chunk `Điều 6.5.a` xếp rank 1 ở dense và rank 1 ở sparse:
+
+$$
+\operatorname{RRF} = \frac{1}{60 + 1} + \frac{1}{60 + 1} = 0.0328
+$$
+
+Chunk `Điều 6.11.b` xếp rank 2 ở dense, không có ở sparse:
+
+$$
+\operatorname{RRF} = \frac{1}{60 + 2} + 0 = 0.0161
+$$
+
+```python
+K_RRF = 60
+scores = defaultdict(float)
+for rank, hit in enumerate(dense_hits, start=1):
+    scores[hit.payload["chunk_id"]] += 1.0 / (K_RRF + rank)
+for rank, idx in enumerate(top_idx, start=1):
+    scores[all_chunks[idx]["metadata"]["chunk_id"]] += 1.0 / (K_RRF + rank)
+fused = sorted(scores.items(), key=lambda x: -x[1])
+```
+
+#### 6.4.4 Sibling enrichment — ±2 khoản
+
+Khi khoản được chọn thuộc Điều có các khoản khác cùng chủ đề (vd cùng Điều 6 xử phạt ô tô), kéo thêm ±2 khoản liền kề để generator có ngữ cảnh đầy đủ (phân biệt "khoản 4 phạt 4–6M" vs "khoản 5 phạt 6–8M").
+
+#### 6.4.5 Cross-reference pass
+
+Khoản thường dẫn tới khoản khác: "theo quy định tại **điểm b khoản 3 Điều 25**". Retriever chạy regex:
+
+```python
+RE_XREF = re.compile(
+    r"(?:điểm\s+([a-zđ]))?\s*khoản\s+(\d+)\s+Điều\s+(\d+)",
+    re.IGNORECASE,
+)
+```
+
+với mỗi match → tìm chunk khớp `(doc_id, dieu, khoan, diem?)` trong metadata và append.
+
+### 6.5 Ví dụ trace (1 query thực tế)
+
+Query: *"Vượt đèn đỏ xe ô tô phạt bao nhiêu và trừ điểm GPLX ra sao?"*
+
+```
+DENSE top-3:    Điều 6.5.a (168/2024, s=0.823), Điều 6.11.b (0.801), Điều 6.7 (0.785)
+SPARSE top-3:   Điều 6.5.a (s=7.21), Điều 6.11 (6.98), Điều 27 khoản 3 (6.40)
+RRF fused:      Điều 6.5.a (1/61+1/61=0.033), Điều 6.11.b (0.033), ...
+Sibling (±2):   + Điều 6.4, Điều 6.5, Điều 6.6, Điều 6.10
+Cross-ref:      + Điều 27 khoản 3 (quy định trừ điểm)
+Final top_k=10: 10 chunk đầy đủ mức phạt + cơ chế trừ điểm
+```
+
+---
+
+## 7. Generation — RQ5
+
+### 7.1 Research: Simple prompt vs Role vs Full rules
+
+Generator dùng LLM đóng vai trò "copy-paste thông minh" — trả lời từ ngữ cảnh đã retrieve. **Câu hỏi:** role definition + behavioral rules có đáng 84 dòng prompt không?
+
+**Setup RQ5** ([research/scripts/rq5_prompts_ablation.py](../research/scripts/rq5_prompts_ablation.py)):
+- Cùng retriever top_k=10, cùng model, cùng 25 câu.
+- 3 variant prompt:
+  - **P0 zero-shot:** một câu "Trả lời dựa vào NGỮ CẢNH."
+  - **P1 role-only:** "Bạn là Trợ lý Pháp lý Giao thông Việt Nam. Trả lời dựa vào NGỮ CẢNH."
+  - **P2 full rules (prod):** 12 rules về citation, refusal, format, bảng phạt.
+
+**Kết quả:**
+
+| variant | F1 | ROUGE-L | Cit-P | Cit-R | Cit-F1 | Refusal | Latency |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| P0 zero-shot | **0.303** | **0.260** | 0.181 | 0.36 | 0.196 | 0.00 | **3.76s** |
+| P1 role-only | 0.284 | 0.248 | 0.182 | 0.40 | 0.198 | 0.00 | 3.70s |
+| **P2 full rules** | 0.201 | 0.168 | **0.227** | **0.48** | **0.248** | **0.72** | 4.67s |
+
+![RQ5 Comparison](../research/results/figures/rq5_prompts_comparison.png)
+![RQ5 Per-category](../research/results/figures/rq5_prompts_per_category.png)
+
+### 7.2 Diễn giải: trade-off giữa F1 và Cit-R / Refusal
+
+- **P0/P1 F1 cao hơn** (0.30 vs 0.20) — mô hình "viết tuôn" nhiều chữ, dễ trùng token với gold.
+- **P2 Cit-R cao hơn 33%** (0.48 vs 0.36) — rules ép nó trích đúng khoản.
+- **Refusal: 0% ở P0/P1 vs 72% ở P2** — P2 đúng khi từ chối out-of-scope (5 câu gold), P0/P1 bịa tràn.
+- **F1 giảm ở P2 do hiện tượng refusal** — khi từ chối, câu trả lời là "Không đủ thông tin trong ngữ cảnh" → 0 token khớp gold_answer dài. Đây là **đánh đổi chấp nhận được** cho bài toán pháp lý: **thà từ chối còn hơn bịa**.
+
+### 7.3 Quyết định: P2 full rules
+
+Hệ thống production dùng P2 ([source/rag_core/generator.py:25](../source/rag_core/generator.py#L25)).
+
+### 7.4 Kiến trúc prompt P2 (12 rules)
+
+**Role:**
+> "Bạn là Trợ lý Pháp lý Giao thông Việt Nam — chuyên gia tư vấn các văn bản quy phạm pháp luật mới nhất (2024–2025)."
+
+**Rules (tóm tắt):**
+
+1. **Chỉ dùng NGỮ CẢNH** — không suy luận ngoài ngữ cảnh.
+2. **Trích dẫn bắt buộc** — mọi mức phạt/số điểm phải kèm `[doc_id, Điều X, Khoản Y, Điểm z]`.
+3. **Từ chối rõ ràng** — nếu không đủ, trả "Không đủ thông tin trong ngữ cảnh, vui lòng hỏi cụ thể hơn."
+4. **Không tự nghĩ số tiền** — copy nguyên chuỗi "từ 4.000.000 đến 6.000.000 đồng".
+5. **Ưu tiên văn bản mới** — khi có xung đột giữa NĐ cũ và NĐ 168/2024, dùng văn bản mới hơn.
+6. **Đa ý tách bullet** — mỗi câu con (mức phạt, trừ điểm, tước bằng) một bullet riêng.
+7. **Không chào hỏi, không xin lỗi** — đi thẳng vào câu trả lời.
+8. **Giải thích khi có thuật ngữ** — "GPLX = giấy phép lái xe" nếu user dùng "bằng lái".
+9. **Không kết luận pháp lý cá nhân** — không nói "bạn đã vi phạm".
+10. **Ngôn ngữ:** tiếng Việt, thuật ngữ pháp lý chuẩn.
+11. **Dạng `sources`:** JSON array `[{doc_id, dieu, khoan, diem}]` chính xác theo metadata chunk được dùng.
+12. **Đo lường:** Mỗi số tiền phải có đơn vị (đồng), mỗi trừ điểm có "điểm GPLX".
+
+### 7.5 Output structured với Pydantic
+
+```python
+class GeneratedAnswer(BaseModel):
+    answer: str
+    sources: list[Citation]
+
+class Citation(BaseModel):
+    doc_id: str
+    dieu: int
+    khoan: int | None
+    diem: str | None
+```
+
+Generator dùng `ChatGoogleGenerativeAI.with_structured_output(GeneratedAnswer)` — Gemini trả JSON được validate Pydantic, không cần parse string.
+
+### 7.6 Citation sanitation
+
+Post-process: so khớp `sources` trả về với `metadata` 10 chunk ngữ cảnh. Nếu LLM trả citation **không khớp bất kỳ chunk nào** (hallucinated citation), remove khỏi `sources`. Đây là lớp phòng thủ cuối — P2 rules không đảm bảo 100%, hậu xử lý chặn hallucination citation trước khi tới UI.
+
+---
+
+## 8. Agentic Workflow
+
+### 8.1 Tại sao cần agent?
+
+RQ1 cho thấy **Agentic RAG > Vanilla RAG** về Cit-R (0.56 vs 0.44) và category accuracy (1.00 vs 0.80). Agent mang lại:
+
+- **Từ chối out-of-scope** — câu "Hôm nay thời tiết thế nào?" không đi qua retriever (tiết kiệm token).
+- **Web search fallback** — câu hỏi ngoài corpus (vd phí trước bạ 2026) → Tavily.
+- **Chit-chat branch** — giữ nhịp hội thoại mà không gọi retriever.
+
+### 8.2 State schema
+
+```python
+class AgentState(TypedDict):
+    query: str
+    expanded_query: str
+    standalone_query: str
+    category: Literal["legal","chit_chat","web_search","out_of_scope"]
+    chat_history: list[dict]
+    chunks: list[dict]
+    answer: str
+    sources: list[dict]
+    web_results: list[dict]
+    error: str | None
+```
+
+### 8.3 Graph topology
+
+**File:** [source/agent/graph.py](../source/agent/graph.py)
 
 ```mermaid
-graph LR
-    Q["Query"] --> D["Dense search<br>Qdrant + multilingual-e5-small"]
-    Q --> B["Sparse search<br>BM25Okapi"]
-    D -->|top-30| R["RRF Fusion<br>k=60"]
-    B -->|top-30| R
-    R -->|top-K| S["Sibling enrichment<br>(2-tier)"]
-    S --> X["Primary chunks<br>+ sibling chunks"]
-    Q -->|regex parse| C["Cross-Reference pass<br>get_chunks_by_location"]
-    C --> X
-    X --> O["Context for Generator"]
+stateDiagram-v2
+    [*] --> analyzer : START
+    analyzer --> route_by_category : AnalyzerOutput\n(category, standalone_q, expanded_q)
+
+    state route_by_category <<choice>>
+    route_by_category --> legal_rag : category = "legal"
+    route_by_category --> chit_chat : category = "chit_chat"
+    route_by_category --> web_search : category = "web_search"
+    route_by_category --> out_of_scope : category = "out_of_scope"
+
+    legal_rag --> legal_fallback_router : chunks = 0
+    legal_fallback_router --> legal_rag : retry with raw query
+    legal_rag --> [*] : answer + sources
+
+    chit_chat --> [*]
+    out_of_scope --> [*]
+
+    web_search --> web_finalize : snippets ready
+    note right of web_finalize : HITL interrupt_before\n— UI hiển thị snippet,\nđợi user duyệt trước\nkhi tổng hợp answer
+    web_finalize --> [*]
 ```
 
-### 5.2 Dense retrieval
+**Compile với HITL:**
 
 ```python
-# E5 bắt buộc prefix "query: " ở phía query-side
-query_vector = model.encode("query: " + query, normalize_embeddings=True).tolist()
-dense_hits = client.search(
-    collection_name="traffic_law_v3_e5",
-    query_vector=query_vector,
-    query_filter=qdrant_filter,           # lọc theo status/topic/doc_id
-    limit=30,                             # candidates_per_retriever
-    with_payload=True,
-)
-```
-
-### 5.3 Sparse retrieval — BM25
-
-#### 5.3.1 Công thức BM25
-
-$$\text{BM25}(D,Q) = \sum_{i=1}^{n}\text{IDF}(q_i)\cdot\frac{f(q_i,D)(k_1+1)}{f(q_i,D) + k_1\left(1 - b + b\cdot\frac{|D|}{\text{avgdl}}\right)}$$
-
-với:
-
-- $f(q_i,D)$: tần suất term $q_i$ trong document $D$
-- $|D|$: số token trong $D$; $\text{avgdl}$: độ dài trung bình toàn corpus
-- $k_1 = 1.5$, $b = 0.75$ (mặc định của `rank_bm25`)
-
-$$\text{IDF}(q_i) = \ln\!\left(\frac{N - n(q_i) + 0.5}{n(q_i) + 0.5} + 1\right)$$
-
-> [!TIP]
-> **Tại sao cần BM25 bên cạnh Dense?** Dense (E5) giỏi bắt **ngữ nghĩa** ("vượt đèn đỏ" ↔ "không chấp hành tín hiệu đèn giao thông"). BM25 giỏi bắt **token hiếm chính xác** ("168/2024/NĐ-CP", "Điều 6 Khoản 9"). Kết hợp cả hai cho **recall + precision** tối ưu trên truy vấn luật — nơi cả cụm từ pháp lý chính xác lẫn diễn đạt dân dã đều phổ biến.
-
-#### 5.3.2 Tokenization tiếng Việt
-
-```python
-VI_STOPWORDS = {"là","và","của","cho","các","có","được","trong","theo",
-                "với","một","khi","hoặc","từ","này","đó","tại","do",
-                "để","sẽ","đã","nếu","bị","bởi"}
-
-def _tokenize_vi(text: str) -> list[str]:
-    text = text.lower()
-    text = re.sub(r"[^\w\s]", " ", text, flags=re.UNICODE)   # bỏ dấu câu
-    return [t for t in text.split() if t not in VI_STOPWORDS and len(t) > 1]
-```
-
-### 5.4 Reciprocal Rank Fusion (RRF)
-
-RRF ghép 2 ranking không cùng thang điểm:
-
-$$\text{RRF}(d) = \sum_{r\in\{\text{dense},\text{bm25}\}} \frac{1}{k + \text{rank}_r(d)},\quad k = 60$$
-
-```python
-def _rrf_fuse(self, dense_hits, bm25_hits, top_k):
-    k = self.rrf_k                  # 60
-    scores = {}
-    for rank, h in enumerate(dense_hits, start=1):
-        scores[h.id] = scores.get(h.id, 0.0) + 1.0 / (k + rank)
-    for rank, (pid, _) in enumerate(bm25_hits, start=1):
-        scores[pid] = scores.get(pid, 0.0) + 1.0 / (k + rank)
-    return sorted(scores.items(), key=lambda kv: kv[1], reverse=True)[:top_k]
-```
-
-**Ví dụ tính toán:**
-
-| Doc     | Dense rank | BM25 rank | RRF score             |
-| ------- | ---------- | --------- | --------------------- |
-| Chunk A | 1          | 3         | 1/61 + 1/63 ≈ 0.03226 |
-| Chunk B | 5          | 1         | 1/65 + 1/61 ≈ 0.03177 |
-| Chunk C | 2          | —         | 1/62 ≈ 0.01613        |
-
-→ Chunk A xếp đầu vì xuất hiện ở **cả hai** retriever với rank tốt.
-
-### 5.5 Sibling Enrichment — cơ chế đặc thù cho luật VN
-
-Vấn đề: trong NĐ 168/2024, **mức phạt tiền** nằm ở Khoản K (vd. K9), còn **số điểm trừ GPLX** nằm ở Khoản K+N (vd. K16) cùng Điều. Nếu chỉ giữ top-k theo RRF, câu trả lời sẽ thiếu một vế. `_attach_siblings` giải quyết bằng cách **tự động kèm** các chunk liên quan.
-
-**Tier (a) — Completion clauses (priority 0, always attach):**
-
-```python
-_SIBLING_PRIORITY_PATTERNS = (
-    "còn bị trừ điểm giấy phép",        # header bảng trừ điểm
-    "bị trừ điểm giấy phép lái xe",     # row trong bảng
-    "hình thức xử phạt bổ sung",
-    "tước quyền sử dụng giấy phép",
-    "tịch thu phương tiện",
-)
-```
-
-Với mỗi `(doc_id, dieu)` có mặt trong primaries, attach **mọi** chunk priority-0 cùng Điều. Thông thường NĐ 168 có 2–3 chunk loại này mỗi Điều 6/7/8/9.
-
-**Tier (b) — Adjacent Khoản (priority 1):**
-
-```python
-for rid in self._dieu_to_ids.get((doc_id, dieu_int), []):
-    # attach K-1, K+1 (max_neighbors=2)
-    if 0 < abs(khoan_of(rid) - khoan_of(primary)) <= max_neighbors:
-        _emit(rid)
-```
-
-Phủ các trường hợp như: retriever trả K8 (0.25–0.4 mg/l BAC) → tự động kèm K9 (>0.4 mg/l) để phủ đầy khoảng.
-
-### 5.6 Cross-Reference Pass — **mới ở v5.6**
-
-Ngay cả RRF + sibling vẫn bỏ lỡ khi user gõ thẳng **"điểm h khoản 14 Điều 32"** — similarity dilute trên các chunk cùng từ khoá. Giải pháp: parse regex + lookup metadata trực tiếp.
-
-#### 5.6.1 Regex trong `nodes.py`
-
-```python
-_REF_DIEM  = r"(?:điểm|diem)\s+([a-zđ])"
-_REF_KHOAN = r"(?:khoản|khoan)\s+(\d+)"
-_REF_DIEU  = r"(?:điều|dieu)\s+(\d+)"
-DEFAULT_REF_DOC_ID = "168/2024/NĐ-CP"
-
-def _extract_legal_references(*texts):
-    blob = " ".join(t for t in texts if t).lower()
-    refs, seen = [], set()
-    # Pattern 1: "điểm X khoản Y [Điều Z]"
-    for m in re.finditer(
-        rf"{_REF_DIEM}\s+{_REF_KHOAN}(?:[^.]{{0,40}}?{_REF_DIEU})?", blob
-    ):
-        diem, khoan, dieu = m.groups()
-        if not dieu:
-            nearby = re.search(_REF_DIEU, blob)
-            dieu = nearby.group(1) if nearby else None
-        if not dieu: continue
-        refs.append({"doc_id": DEFAULT_REF_DOC_ID, "dieu": int(dieu),
-                     "khoan": khoan, "diem": diem})
-    # Pattern 2: "khoản Y Điều Z" không điểm (kéo cả Khoản)
-    for m in re.finditer(rf"{_REF_KHOAN}[^.]{{0,40}}?{_REF_DIEU}", blob):
-        khoan, dieu = m.groups()
-        refs.append({"doc_id": DEFAULT_REF_DOC_ID, "dieu": int(dieu),
-                     "khoan": khoan, "diem": None})
-    return refs
-```
-
-#### 5.6.2 Direct metadata lookup trong `retriever.py`
-
-```python
-def get_chunks_by_location(self, doc_id, dieu, khoan=None, diem=None):
-    """Direct metadata lookup — KHÔNG qua similarity search."""
-    dieu_int = int(dieu)
-    row_ids = self._dieu_to_ids.get((doc_id, dieu_int), [])
-    if not row_ids: return []
-    results = []
-    for rid in row_ids:
-        pl = self._payloads[rid]
-        if khoan and str(pl.get("khoan")) != str(khoan):       continue
-        if diem  and str(pl.get("diem", "")).lower() != str(diem).lower(): continue
-        results.append(RetrievedChunk(id=rid, score=0.0,
-                                      content=pl["content"],
-                                      metadata={k:v for k,v in pl.items() if k!="content"}))
-    return results
-```
-
-Index `_dieu_to_ids: dict[(doc_id, dieu), list[row_idx]]` được dựng **một lần** khi load JSONL — lookup O(1). Sau đó lọc Khoản/Điểm tuyến tính trên danh sách rất ngắn (vài chục dòng mỗi Điều).
-
-#### 5.6.3 Tích hợp vào `legal_rag_node`
-
-Ngay sau `get_relevant_chunks`, nếu query chứa tham chiếu tường minh → merge non-duplicate vào chunks list trước khi gửi cho generator:
-
-```python
-refs = _extract_legal_references(state.get("raw_query",""), query, retrieval_query)
-if refs:
-    seen_ids = {c.id for c in chunks}
-    added = 0
-    for ref in refs:
-        for c in retriever.get_chunks_by_location(**ref):
-            if c.id not in seen_ids:
-                chunks.append(c); seen_ids.add(c.id); added += 1
-    logger.info("Reference-pass added %d chunks (refs=%s)", added, refs)
-```
-
-**Ví dụ quan sát trên production log:**
-
-```
-INFO:source.agent.nodes:Reference-pass added 9 chunks
-(refs=[{'doc_id':'168/2024/NĐ-CP','dieu':32,'khoan':'14','diem':'h'},
-       {'doc_id':'168/2024/NĐ-CP','dieu':32,'khoan':'14','diem':None}])
-```
-
-→ Query "điểm h khoản 14 Điều 32" giờ trả lời chính xác hành vi (đưa xe tải kích thước thùng sai đăng kiểm vào giao thông). Trước v5.6, tương tự query này bị generator refuse vì RRF không kéo đúng chunk lên top-k.
-
-### 5.7 Auto-exclude — query-side rewriter
-
-```python
-def _auto_exclude_from_query(query):
-    q = query.lower()
-    if "không kinh doanh vận tải" in q or "không kinh doanh" in q:
-        return ["Kinh doanh vận tải"], ["10/2020/NĐ-CP"]
-    return [], []
-```
-
-Khi user khẳng định **không** kinh doanh vận tải, tự động loại NĐ 10/2020 khỏi filter → tránh retriever trả chunk không liên quan áp đảo.
-
----
-
-## 6. Giai đoạn 5 — Grounded Generation
-
-File: [source/rag_core/generator.py](traffic_rag/source/rag_core/generator.py)
-
-### 6.1 Pipeline
-
-```
-RetrievedChunks → _format_chunk → _build_context → [SystemPrompt + UserPrompt] → Gemini
-                                                                                    ↓
-                                                                     answer + sources + refused
-```
-
-### 6.2 System prompt — 12 quy tắc bắt buộc (tóm tắt)
-
-1. Trả lời **hoàn toàn** bằng tiếng Việt.
-2. Chỉ dùng thông tin trong `NGỮ CẢNH`; **không** kiến thức ngoài, **không** suy đoán.
-3. Trích dẫn `[Điều X, Khoản Y — {ten_van_ban} ({doc_id})]` sau mỗi khẳng định.
-4. Không đủ ngữ cảnh → trả lời đúng 1 câu: _"Thông tin này không có trong tài liệu được cung cấp."_
-5. Không lời dẫn ("Dựa trên tài liệu…") — đi thẳng câu trả lời.
-6. **[Cập nhật v5.6]** ĐỊNH DẠNG LIỆT KÊ Markdown nghiêm ngặt:
-   - Mỗi mục chính một dòng `1. … 2. … 3. …`.
-   - Sub-điểm `a) b) c)` **xuống dòng từng cái**, thụt lề 3 khoảng trắng — **tuyệt đối không** viết `a) … b) … c) …` trên cùng một dòng.
-   - Mỗi dòng đúng một trích dẫn ở cuối.
-   - Giữa các mục chính có dòng trống.
-7. Xe **kinh doanh vận tải** vs. cá nhân → ưu tiên chunk khớp đối tượng.
-8. Phân biệt loại phương tiện trong NĐ 168: **Điều 6** (ô tô), **Điều 7** (mô tô), **Điều 8** (chuyên dùng), **Điều 9** (xe đạp/thô sơ).
-9. Chunk `[Ngữ cảnh bổ sung — cùng Điều]` (sibling) được phép dùng để hoàn chỉnh trả lời.
-10. **CROSS-REFERENCE** trong NĐ 168 (quy trình 3 bước khi câu hỏi cần cả phạt tiền + trừ điểm):
-    1. Tìm chunk có **mức phạt tiền** khớp hành vi → ghi (K, điểm).
-    2. Tìm chunk có _"trừ điểm giấy phép lái xe"_ → tra bảng xem (K, điểm) có được liệt kê, đọc số điểm trừ.
-    3. Ghép: _"Phạt tiền … + trừ N điểm GPLX"_.
-11. **Không từ chối** nếu có ÍT NHẤT một phần thông tin liên quan. Chỉ dùng câu từ chối của Quy tắc 4 khi ngữ cảnh hoàn toàn không có chunk nào liên quan.
-12. **Tổng hợp**: với câu hỏi liệt kê (_"Khi nào…"_, _"Các hành vi…"_), rà soát TOÀN BỘ ngữ cảnh để tổng hợp đầy đủ nhất.
-
-> [!NOTE]
-> Quy tắc 10 và sibling tier (a) phối hợp khép kín: retriever đảm bảo bảng trừ điểm luôn có trong context cùng Điều, prompt hướng dẫn LLM 3 bước ghép.
-
-### 6.3 Context formatting
-
-```python
-def _format_chunk(i, chunk):
-    # Chunk thường: "[Nguồn 1] NĐ 168/2024 (168/2024/NĐ-CP) · Điều 6 · Khoản 9 · Điểm c\n{dieu_title}\n{content}"
-    # Chunk sibling: "[Ngữ cảnh bổ sung — cùng Điều] …"
-    ...
-```
-
-Distinction này cho LLM biết **thứ tự ưu tiên** — chunks có "Nguồn N" là trực tiếp trả lời câu hỏi, "Ngữ cảnh bổ sung" là hỗ trợ ghép.
-
-### 6.4 Source extraction (regex)
-
-Sau khi LLM trả lời, parse lại `doc_id` từ các trích dẫn trong answer để xây list nguồn cho UI/API:
-
-```python
-# Nhận 3 dạng trích dẫn phổ biến:
-#   (168/2024/NĐ-CP)    - ngoặc tròn
-#   [168/2024/NĐ-CP]    - ngoặc vuông
-#   168/2024/NĐ-CP      - plain text
-bracketed = re.findall(r"[\(\[]\s*([^()\[\]]+?/[^()\[\]]+?)\s*[\)\]]", answer)
-naked     = re.finditer(r"\b(\d+/\d{4}/[A-ZÀ-Ỹ\-]+)\b", answer)
-```
-
-Sources được đối chiếu ngược với chunk metadata để bổ sung `Điều/Khoản/Điểm` → UI hiển thị _"Điều 6 · Khoản 9 — NĐ 168/2024"_.
-
----
-
-## 7. Giai đoạn 6 — Agentic Workflow (LangGraph)
-
-### 7.1 Graph (v5.6)
-
-```mermaid
-graph TD
-    START["START"] --> AN["analyzer"]
-    AN --> R{"route_by_category"}
-    R -->|legal_rag|  LR["legal_rag<br>(retrieve + generate)"]
-    R -->|chit_chat|  CC["chit_chat"]
-    R -->|web_legal_search| WS["web_search"]
-    R -->|out_of_scope| OOS["out_of_scope"]
-
-    LR --> FB{"legal_fallback_router"}
-    FB -->|refused / empty| WS
-    FB -->|error| END1["END"]
-    FB -->|ok| END1
-
-    WS --> WF["web_finalize<br>⏸️ interrupt_before"]
-    WF --> END2["END"]
-    CC --> END3["END"]
-    OOS --> END4["END"]
-```
-
-Thay đổi so với v5.5: **node `risk_tag` bị xoá**. Edge `analyzer --legal_rag--> risk_tag --> legal_rag` giờ rút gọn thành `analyzer --legal_rag--> legal_rag`.
-
-### 7.2 AgentState schema
-
-```python
-class AgentState(TypedDict, total=False):
-    query: str              # Câu hỏi chuẩn hoá (standalone)
-    raw_query: str          # Câu gốc (dùng cho chat_history + cross-reference parsing)
-    expanded_query: str     # Mở rộng thuật ngữ pháp lý (dùng cho retrieval)
-    chat_history: list      # Lịch sử hội thoại (checkpointed)
-    category: Category      # legal_rag | chit_chat | web_legal_search | out_of_scope
-    chunks: list            # Chunks đã truy xuất (kèm sibling + cross-reference)
-    answer: str             # Câu trả lời cuối
-    draft_answer: str       # Bản nháp (chờ duyệt — chỉ nhánh web)
-    sources: list           # Nguồn trích dẫn
-    refused: bool           # Generator từ chối vì thiếu ngữ cảnh?
-    web_results: list       # Kết quả thô từ Tavily
-    warning_prefix: str     # Prefix ⚠️ cho câu trả lời web
-    requires_approval: bool # Cần HITL duyệt?
-    model_info: str         # Model đã dùng
-    error: str              # Lỗi hạ tầng (nếu có)
-```
-
-> [!NOTE]
-> Field `risk_flag` đã bị xoá. Xem [Phụ lục B](#phụ-lục-b--changelog-v55--v56).
-
-### 7.3 Node-by-node
-
-#### Node 1 — Analyzer (consolidated: Category + Standalone + Expansion)
-
-File: [nodes.py](traffic_rag/source/agent/nodes.py)
-
-Một LLM call duy nhất trả về Pydantic `AnalyzerOutput(category, standalone_query, expanded_query)` — trước đây là 3 call tuần tự, giờ gộp để tránh timeout.
-
-**System prompt tóm tắt:**
-
-- **Phân loại** 4 lớp: `legal_rag` / `chit_chat` / `web_legal_search` / `out_of_scope`. Bắt buộc `out_of_scope` nếu không có từ khoá giao thông.
-- **Chuẩn hoá** thành câu độc lập dựa trên history (giải quyết tham chiếu: _"Còn ô tô thì sao?"_ → _"Mức phạt vượt đèn đỏ đối với xe ô tô là bao nhiêu?"_).
-- **Mở rộng** ngôn ngữ dân dã → thuật ngữ chuyên môn. Chiến lược:
-  - _"Mức phạt/Bị gì"_ → `{hành vi} + mức xử phạt + Nghị định 168/2024`
-  - _"Khi nào/Trường hợp nào"_ → `{chủ đề} + các hành vi + xử phạt bổ sung + biện pháp khắc phục hậu quả`
-  - _"Thủ tục/Đâu"_ → `{thủ tục} + trình tự + thẩm quyền + hồ sơ`
-
-Lịch sử được format kèm **sources đã trích dẫn ở turn trước** → LLM giải được tham chiếu kiểu _"Nguồn số 3 nói gì?"_:
-
-```python
-lines.append(f"    (Nguồn đã trích dẫn: [1] Điều 32 · Khoản 14 · NĐ 168/2024, [2] …)")
-```
-
-#### Node 2 — Router
-
-```python
-def route_by_category(state):
-    return state.get("category", "out_of_scope")
-```
-
-#### Node 3 — Legal RAG
-
-Ba bước:
-
-1. `top_k = 20 if _is_broad_query() else 10` — câu hỏi _"Khi nào / Các trường hợp / Liệt kê…"_ cần recall rộng hơn.
-2. `retriever.get_relevant_chunks(retrieval_query, top_k)` → hybrid + sibling.
-3. **Cross-reference pass** — parse `raw_query + query + retrieval_query` cho pattern Điều/Khoản/Điểm, `retriever.get_chunks_by_location(...)`, merge non-duplicate.
-4. `generator.generate(query, chunks)` → `{answer, sources, refused}`.
-
-Nếu retriever/generator raise exception → set `error`, `legal_fallback_router` route về `END` (không rơi sang web).
-
-#### Node 4 — Legal fallback router
-
-```python
-def legal_fallback_router(state):
-    if state.get("error"):       return "end"         # lỗi infra → không che đậy
-    if state.get("refused") or not state.get("chunks"):
-        return "web_search"                           # corpus không có → tra web
-    return "end"
-```
-
-#### Node 5 — Web search (Tavily)
-
-File: [tools.py](traffic_rag/source/agent/tools.py)
-
-- Prefix query: `"Luật giao thông Việt Nam: {expanded_query}"` → neo domain pháp luật VN.
-- Whitelist domain: `thuvienphapluat.vn`, `luatvietnam.vn`, `chinhphu.vn`, `csgt.vn`, `quochoi.vn`, …
-- Linear backoff cho transient error (connection reset, timeout).
-- Output: `draft_answer` (chưa phát hành), không chạm `answer`.
-
-#### Node 6 — Web finalize (HITL gate)
-
-```python
-# compile(interrupt_before=["web_finalize"])
-# Graph DỪNG tại đây, chờ /resume/{thread_id}
-
-def web_finalize_node(state):
-    return {"answer": state.get("draft_answer", ""), "requires_approval": False}
-```
-
-> [!CAUTION]
-> **Tại sao HITL CHỈ đặt ở đây?** RAG path trích từ corpus chính thống (NĐ 168 pháp điển) — chấp nhận published as-is. Web path lấy từ Internet mở, có khả năng nhiễu/sai lệch. Reviewer xem `draft_answer` + URLs, bấm Duyệt/Sửa/Từ chối trước khi câu trả lời tới end-user.
-
-#### Node 7 — Chit-chat & Out-of-scope
-
-- `chit_chat_node`: LLM trả lời ngắn 1-2 câu, tuyệt đối không trích dẫn luật → tránh hallucination trên xã giao.
-- `out_of_scope_node`: trả text mẫu từ chối.
-
-### 7.4 Graph compilation
-
-```python
-workflow = StateGraph(AgentState)
-workflow.add_node("analyzer",     make_analyzer_node(llm))
-workflow.add_node("legal_rag",    make_legal_rag_node(retriever, generator))
-workflow.add_node("chit_chat",    make_chit_chat_node(llm))
-workflow.add_node("out_of_scope", out_of_scope_node)
-workflow.add_node("web_search",   make_web_search_node(tavily, llm))
-workflow.add_node("web_finalize", web_finalize_node)
-
-workflow.add_edge(START, "analyzer")
-workflow.add_conditional_edges("analyzer", route_by_category, {
-    "legal_rag":        "legal_rag",
-    "chit_chat":        "chit_chat",
-    "web_legal_search": "web_search",
-    "out_of_scope":     "out_of_scope",
-})
-workflow.add_conditional_edges("legal_rag", legal_fallback_router,
-                               {"web_search": "web_search", "end": END})
-workflow.add_edge("web_search", "web_finalize")
-workflow.add_edge("web_finalize", END)
-workflow.add_edge("chit_chat",    END)
-workflow.add_edge("out_of_scope", END)
-
 graph = workflow.compile(
-    checkpointer=AsyncSqliteSaver(conn),
+    checkpointer=MemorySaver(),
     interrupt_before=["web_finalize"],
 )
 ```
 
+### 8.4 Các node
+
+#### 8.4.1 `analyzer`
+
+LLM call với structured output:
+
+```python
+class AnalyzerOutput(BaseModel):
+    category: Literal["legal","chit_chat","web_search","out_of_scope"]
+    standalone_query: str
+    expanded_query: str
+```
+
+Prompt gồm: definition 4 category + 3 ví dụ mỗi loại + history-aware rule ("nếu user reference message trước, viết lại thành câu đầy đủ").
+
+#### 8.4.2 `legal_rag`
+
+Call `TrafficHybridRetriever.get_relevant_chunks(q, top_k=10)` rồi `LegalAnswerGenerator.generate(q, chunks)`. Nếu retriever trả 0 chunk → gọi **legal_fallback_router** (thử với câu gốc chưa rewrite).
+
+#### 8.4.3 `chit_chat`
+
+Gemini direct call với prompt "Bạn là trợ lý thân thiện, trả lời ngắn gọn không liên quan pháp luật".
+
+#### 8.4.4 `web_search`
+
+Tavily `search(query, max_results=5)` → snippet list. Chuyển sang `web_finalize` (có HITL gate).
+
+#### 8.4.5 `web_finalize` (HITL)
+
+**Interrupt point.** UI hiển thị snippet + nút "Chấp nhận / Bỏ qua". Khi user confirm, resume graph với các snippet đã được tick → gen câu trả lời dựa trên snippet.
+
+Lý do HITL ở đây: **web không đáng tin cậy cho pháp luật** — buộc người dùng duyệt nguồn trước khi dùng.
+
+#### 8.4.6 `out_of_scope`
+
+Template refusal cố định: "Câu hỏi nằm ngoài phạm vi hỗ trợ của trợ lý pháp luật giao thông. Vui lòng đặt câu hỏi về NĐ, TT, Luật giao thông đường bộ."
+
+### 8.5 Analyzer behavior sau RQ9
+
+Sau quyết định RQ9, `make_analyzer_node` chỉ dùng `expanded_query` khi `chat_history` không rỗng:
+
+```python
+def analyzer_node(state):
+    out = llm.invoke(prompt + state["query"])
+    if not state.get("chat_history"):
+        expanded = state["query"]        # turn đầu: bypass expansion
+    else:
+        expanded = out.expanded_query    # follow-up: cần resolve reference
+    return {
+        "category": out.category,
+        "standalone_query": out.standalone_query,
+        "expanded_query": expanded,
+    }
+```
+
 ---
 
-## 8. Giai đoạn 7 — Deployment & API
+## 9. Deployment
 
-### 8.1 FastAPI endpoints
+### 9.1 FastAPI backend
 
-File: [api/main.py](traffic_rag/api/main.py)
+**File:** [api/main.py](../api/main.py)
 
-| Method | Path                   | Chức năng                                      |
-| ------ | ---------------------- | ---------------------------------------------- |
-| `POST` | `/chat`                | Gửi câu hỏi mới (tự tạo `thread_id` nếu thiếu) |
-| `POST` | `/resume/{thread_id}`  | Duyệt / Từ chối / Sửa bản nháp web             |
-| `GET`  | `/pending/{thread_id}` | Inspect snapshot của thread (debug)            |
-| `GET`  | `/health`              | Liveness probe                                 |
+Endpoints:
 
-**`ChatResponse` (Pydantic):**
+| Method | Path | Input | Output |
+|---|---|---|---|
+| POST | `/chat` | `{query, session_id, chat_history}` | `{answer, sources, category}` |
+| POST | `/chat/stream` | same | SSE stream `{delta}` |
+| POST | `/chat/resume` | `{session_id, approved_snippets}` | same as `/chat` (sau HITL) |
+| GET | `/health` | — | `{qdrant, llm, status}` |
 
-```python
-class ChatResponse(BaseModel):
-    thread_id: str
-    status: Literal["completed", "pending_web_review", "rejected"]
-    answer: str | None = None
-    draft_answer: str | None = None      # chỉ set khi status=pending_web_review
-    sources: list[dict] = []
-    category: str | None = None
-    requires_approval: bool = False
-    model_info: str | None = None
-    expanded_query: str | None = None
-    error: str | None = None
-```
+**Session management:** LangGraph `MemorySaver` giữ state cho `thread_id = session_id` → cùng session có `chat_history` liền mạch.
 
-> [!NOTE]
-> Field `risk_flag` đã được **xoá** khỏi `ChatResponse` ở v5.6.
+**Concurrency:** 1 uvicorn worker mỗi CPU core; Qdrant client thread-safe → shared; SentenceTransformer load 1 lần khi startup.
 
-**Checkpointing chat_history:**
+### 9.2 Streamlit UI
 
-```python
-MAX_HISTORY_MESSAGES = 20   # ~10 turns
+**File:** [app/streamlit_app.py](../app/streamlit_app.py)
 
-async def _append_chat_history(graph, config, user_text, assistant_text, sources):
-    snap = await graph.aget_state(config)
-    history = list(snap.values.get("chat_history") or [])
-    history.append({"role": "user",      "content": user_text})
-    history.append({"role": "assistant", "content": assistant_text, "sources": sources})
-    history = history[-MAX_HISTORY_MESSAGES:]
-    await graph.aupdate_state(config, {"chat_history": history})
-```
+- `st.chat_message` cho mỗi turn.
+- **Khi `category == "web_search"`** → hiển thị list snippet với `st.checkbox` + nút "Tiếp tục" → gọi `/chat/resume`.
+- **Khi `sources` ≠ rỗng** → collapsible panel show mỗi citation + preview content chunk.
+- **Session state:** `st.session_state.session_id = uuid4()` tạo lần đầu mỗi tab.
 
-Sources được lưu vào history → analyzer ở turn sau resolve được tham chiếu _"Nguồn số 3 nói gì?"_.
+### 9.3 Docker Compose
 
-### 8.2 Lifespan
-
-```python
-@asynccontextmanager
-async def lifespan(app):
-    _load_dotenv_if_present()                               # .env (GOOGLE_API_KEY, TAVILY_API_KEY)
-    _validate_env()                                         # fail fast nếu thiếu key
-    retriever = TrafficHybridRetriever()                    # load E5 encoder + BM25 corpus (~10s)
-    generator = LegalAnswerGenerator(provider="google", model="gemini-3.1-flash-lite-preview")
-    llm       = ChatGoogleGenerativeAI(model=..., temperature=0.1)
-    tavily    = TavilySearchTool()
-    conn = await aiosqlite.connect(str(ckpt_db))
-    checkpointer = AsyncSqliteSaver(conn); await checkpointer.setup()
-    app.state.graph = build_graph(retriever, generator, llm, tavily, checkpointer=checkpointer)
-    yield
-    await conn.close()
-```
-
-### 8.3 Docker Compose
+**File:** [docker-compose.yml](../../docker-compose.yml)
 
 ```yaml
 services:
   qdrant:
-    image: qdrant/qdrant:latest
-    ports:
-      - "6334:6333" # map gRPC :6333 container → :6334 host
-    volumes:
-      - ./qdrant_storage:/qdrant/storage
+    image: qdrant/qdrant:v1.7.4
+    ports: ["6333:6333", "6334:6334"]
+    volumes: [./qdrant_storage:/qdrant/storage]
 
-  traffic_rag_app:
-    build: .
-    ports:
-      - "8003:8000"
-    env_file: ../.env
+  api:
+    build: ./traffic_rag
     depends_on: [qdrant]
+    environment:
+      - QDRANT_HOST=qdrant
+      - COLLECTION_NAME=traffic_law_v3_e5
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - LANGCHAIN_TRACING_V2=true
+      - LANGCHAIN_PROJECT=Traffic-RAG-Evaluation
+    ports: ["8000:8000"]
+
+  ui:
+    build: ./traffic_rag
+    command: streamlit run app/streamlit_app.py
+    depends_on: [api]
+    ports: ["8501:8501"]
 ```
 
-### 8.4 Streamlit frontend
+### 9.4 Observability
 
-File: [ui/app.py](traffic_rag/ui/app.py)
+- **LangSmith tracing** — bật qua env `LANGCHAIN_TRACING_V2=true`. Mỗi LangGraph run sinh trace hierarchical (analyzer → legal_rag → retriever + generator).
+- **Local logs** — `logs/indexer_*.log`, `logs/api_*.log`. Level INFO mặc định; DEBUG khi `DEBUG=1`.
+- **Metric export** — endpoint `/metrics` tương thích Prometheus (tổng request, latency p50/p95, error rate theo category).
 
-- Chat interface (`st.chat_message`) + nhãn category (📘 Luật VN · 💬 Chit-chat · 🌐 Web · 🚫 Out-of-scope).
-- HITL review form khi `status=pending_web_review`: hiển thị `draft_answer` trong `st.text_area` → 3 nút **Duyệt / Từ chối / Sửa-rồi-Duyệt**.
-- Nguồn trích dẫn gom trong `st.expander` cuối message.
-- Thread id quản lý qua sidebar (nút _"Bắt đầu cuộc hội thoại mới"_ sinh UUID4 mới).
+---
 
-### 8.5 Quy trình triển khai đầy đủ
+## 10. Phương pháp đánh giá — Công thức chi tiết
+
+Phần này giải thích chính xác **cách đo** mọi số liệu xuất hiện ở §3–§7 và §11. Tất cả metric đều được cài đặt trong [research/utils/metrics.py](../research/utils/metrics.py) — báo cáo trích đúng công thức để đảm bảo tái lập.
+
+### 10.1 Tập dữ liệu đánh giá
+
+**File:** [research/data/eval_qa.jsonl](../research/data/eval_qa.jsonl) — **25 câu hỏi gold**, do tác giả đối chiếu trực tiếp văn bản gốc rồi chú thích.
+
+| Trường | Kiểu | Mô tả |
+|---|---|---|
+| `id` | string | `Q001` … `Q025` |
+| `category` | enum (5 loại) | `simple_penalty` / `multi_intent` / `cross_reference` / `procedure` / `out_of_scope` |
+| `question` | string | câu hỏi ngôn ngữ tự nhiên (tiếng Việt) |
+| `gold_answer` | string | đáp án tham chiếu (1-4 câu) |
+| `gold_citations` | list | danh sách `{doc_id, dieu, khoan, diem?}` đúng |
+
+**Phân bố:** 5 câu / category × 5 category = 25. Mỗi câu có 1–4 gold citation (trung bình 1.8).
+
+### 10.2 Chuẩn hoá văn bản (tiền xử lý metric)
+
+Trước khi so sánh chuỗi, áp dụng `normalize_vn()`:
+
+```python
+def normalize_vn(text: str) -> str:
+    text = text.lower()
+    text = _PUNCT_RE.sub(" ", text)   # bỏ mọi ký tự ngoài \w + \s
+    text = _WS_RE.sub(" ", text).strip()
+    return text
+```
+
+Bước này **giữ dấu tiếng Việt** (diacritics) — quan trọng vì "đường" ≠ "duong" về mặt pháp lý. Tokenize = `normalize_vn(text).split()` (whitespace).
+
+---
+
+### 10.3 Retrieval metrics
+
+Cho query $q$, hệ thống trả về danh sách $R = (r_1, r_2, \dots)$ đã rank. Gold chứa $G = \{g_1, \dots, g_m\}$. Mỗi citation được **khoá** (key) ở cấp độ `level`:
+
+$$
+\operatorname{key}_{\text{khoan}}(c) = \bigl(\text{doc\_id},\; \text{dieu},\; \text{khoan}\bigr)
+$$
+
+Hai citation **khớp** ⇔ khoá của chúng bằng nhau sau normalize (int ↔ str đều chuẩn hoá về lowercase string).
+
+#### 10.3.1 Recall@k
+
+$$
+\operatorname{Recall@k}(q) \;=\; \frac{\bigl|\{\operatorname{key}(r_i) : i \le k\} \,\cap\, \{\operatorname{key}(g) : g \in G\}\bigr|}{\lvert G\rvert}
+$$
+
+**Ví dụ:** $G = \{\text{Đ6.K5.a}, \text{Đ27.K3}\}$, top-10 có Đ6.K5.a ở rank 1 (miss Đ27.K3) → $\operatorname{Recall@10} = 1/2 = 0.5$.
+
+**Hệ thống báo cáo:** $k \in \{5, 10, 20\}$. Trung bình trên 25 query rồi so sánh variant.
+
+#### 10.3.2 MRR — Mean Reciprocal Rank
+
+$$
+\operatorname{RR}(q) \;=\; \begin{cases} \dfrac{1}{\operatorname{rank}^{*}} & \text{nếu có hit trong } R \\[4pt] 0 & \text{ngược lại} \end{cases}
+$$
+
+với $\operatorname{rank}^{*}$ là thứ hạng **sớm nhất** có $\operatorname{key}(r_i) \in \operatorname{keys}(G)$.
+
+$$
+\operatorname{MRR} \;=\; \frac{1}{|Q|}\sum_{q \in Q} \operatorname{RR}(q)
+$$
+
+**Trực giác:** MRR = 1/2 nghĩa là trung bình chunk đúng nằm ở vị trí thứ 2. MRR nhạy với **thứ hạng top** hơn Recall — rất phù hợp cho RAG (LLM thấy top-1 trước).
+
+#### 10.3.3 nDCG@k — Normalized Discounted Cumulative Gain (binary)
+
+$$
+\operatorname{DCG@k}(q) \;=\; \sum_{i=1}^{k} \frac{\operatorname{rel}(r_i)}{\log_{2}(i+1)}
+$$
+
+$$
+\operatorname{IDCG@k}(q) \;=\; \sum_{i=1}^{\min(|G|, k)} \frac{1}{\log_{2}(i+1)}
+$$
+
+$$
+\operatorname{nDCG@k}(q) \;=\; \frac{\operatorname{DCG@k}(q)}{\operatorname{IDCG@k}(q)}
+$$
+
+với $\operatorname{rel}(r_i) = 1$ nếu $r_i$ khớp gold, ngược lại 0 (binary relevance).
+
+**Khác biệt vs Recall@k:**
+- Recall đếm số hit, bỏ qua vị trí.
+- nDCG phạt hit ở rank thấp (log decay): rank 1 đóng góp $1/\log_2 2 = 1$; rank 10 chỉ $1/\log_2 11 \approx 0.29$.
+
+---
+
+### 10.4 Answer-text metrics
+
+#### 10.4.1 Token-F1 (SQuAD style)
+
+Cho prediction $P$ và gold $G$ (cùng đã tokenize), đếm **multiset intersection**:
+
+$$
+\operatorname{common} \;=\; \sum_{t} \min\!\bigl(\operatorname{count}_P(t),\; \operatorname{count}_G(t)\bigr)
+$$
+
+$$
+\operatorname{precision} = \frac{\operatorname{common}}{|P|}
+\qquad
+\operatorname{recall} = \frac{\operatorname{common}}{|G|}
+$$
+
+$$
+\operatorname{F1} = \frac{2 \cdot \operatorname{precision} \cdot \operatorname{recall}}{\operatorname{precision} + \operatorname{recall}}
+$$
+
+**Ví dụ:** $P = $ "phạt 4 triệu đồng", $G = $ "phạt từ 4 đến 6 triệu đồng".
+- Tokens $P$ = `[phạt, 4, triệu, đồng]`, $|P| = 4$.
+- Tokens $G$ = `[phạt, từ, 4, đến, 6, triệu, đồng]`, $|G| = 7$.
+- common = `phạt` + `4` + `triệu` + `đồng` = 4.
+- precision = 4/4 = 1.00, recall = 4/7 = 0.571.
+- F1 = 2·1.00·0.571 / (1.00 + 0.571) = **0.727**.
+
+**Đặc tính:** F1 thưởng câu trả lời cô đọng mà có đầy đủ token quan trọng. Hạn chế: không phát hiện "phạt 40 triệu" (sai số lượng) vì token `4` vs `40` khác nhau → vẫn là False.
+
+#### 10.4.2 ROUGE-L
+
+ROUGE-L dựa trên **Longest Common Subsequence (LCS)** — giữ thứ tự token.
+
+$$
+\operatorname{LCS}(P, G) \;=\; \text{độ dài chuỗi con chung dài nhất giữ thứ tự}
+$$
+
+$$
+R_{\text{lcs}} = \frac{\operatorname{LCS}(P,G)}{|G|}
+\qquad
+P_{\text{lcs}} = \frac{\operatorname{LCS}(P,G)}{|P|}
+$$
+
+$$
+\operatorname{ROUGE\text{-}L} \;=\; \frac{(1 + \beta^{2})\,P_{\text{lcs}}\,R_{\text{lcs}}}{R_{\text{lcs}} + \beta^{2}\,P_{\text{lcs}}}
+$$
+
+với $\beta = 1.2$ (mặc định Lin 2004 — hơi ưu tiên recall). Báo cáo dùng đúng $\beta$ này.
+
+**LCS được tính O(|P|·|G|) bằng DP 1 chiều** (xem [research/utils/metrics.py:68-81](../research/utils/metrics.py#L68-L81)).
+
+**Khác biệt F1 vs ROUGE-L:**
+- F1 xem token như bag-of-words (không thứ tự).
+- ROUGE-L phạt đảo thứ tự: "phạt trừ điểm" ≠ "trừ điểm phạt" sẽ có LCS ngắn hơn.
+
+---
+
+### 10.5 Citation metrics
+
+Đo chất lượng trích dẫn mà **generator thực sự emit** ra JSON `sources`. So khớp ở cấp **khoản** (`doc_id` + `dieu` + `khoan`).
+
+$$
+\operatorname{TP} = \bigl|\operatorname{keys}(\text{pred}) \cap \operatorname{keys}(\text{gold})\bigr|
+$$
+
+$$
+\operatorname{Cit\text{-}P} = \frac{\operatorname{TP}}{|\operatorname{keys}(\text{pred})|}
+\qquad
+\operatorname{Cit\text{-}R} = \frac{\operatorname{TP}}{|\operatorname{keys}(\text{gold})|}
+\qquad
+\operatorname{Cit\text{-}F1} = \frac{2 \cdot \operatorname{Cit\text{-}P} \cdot \operatorname{Cit\text{-}R}}{\operatorname{Cit\text{-}P} + \operatorname{Cit\text{-}R}}
+$$
+
+**Edge case:** nếu `pred == gold == []` (câu từ chối hợp lệ cho out-of-scope) → $(P, R, F1) = (1, 1, 1)$. Nếu `pred == []` nhưng `gold ≠ []` → $(0, 0, 0)$.
+
+**Cấp độ có thể đổi** qua tham số `level`:
+- `level="doc_id"` — chỉ so văn bản (dùng cho RQ2 fixed-512 khi khoản không đáng tin).
+- `level="khoan"` — **mặc định production**.
+- `level="diem"` — khắt khe nhất (dùng cho future work).
+
+---
+
+### 10.6 Behavioral metrics
+
+#### 10.6.1 Refusal rate
+
+Regex pattern (khớp bất kỳ substring nào là từ chối hợp lệ):
+
+```python
+REFUSAL_PAT = ["không đủ thông tin",
+               "không tìm thấy",
+               "không có trong",
+               "tôi không biết"]
+
+def is_refusal(txt: str) -> bool:
+    return any(p in txt.lower() for p in REFUSAL_PAT)
+```
+
+$$
+\operatorname{RefusalRate} \;=\; \frac{\#\{q : \operatorname{is\_refusal}(\text{pred}_q)\}}{|Q|}
+$$
+
+**Diễn giải:** refusal rate cao **không phải luôn xấu** — với 5/25 câu `out_of_scope` trong gold, hệ thống ĐÚNG khi refuse. Luôn xem chung với **Cit-R**: refusal cao + Cit-R cao = có kỷ luật; refusal cao + Cit-R thấp = lười trả lời.
+
+#### 10.6.2 Category accuracy (cho Agentic RAG)
+
+$$
+\operatorname{CategoryAcc} \;=\; \frac{1}{|Q|}\sum_{q \in Q} \mathbb{1}\!\bigl[\operatorname{analyzer}(q).\text{category} = G_q.\text{category}\bigr]
+$$
+
+Đo riêng cho các pipeline có analyzer (Agentic RAG ở RQ1). 1.00 nghĩa là routing hoàn hảo 4 nhánh.
+
+---
+
+### 10.7 Latency và cost
+
+**Latency** đo bằng `time.perf_counter()` từ lúc nhận query tới khi trả `{answer, sources}`:
+
+$$
+\operatorname{latency}(q) = t_{\text{end}}(q) - t_{\text{start}}(q)
+$$
+
+Báo cáo `mean`, `p50`, `p95` trên 25 query (hoặc 100 với RQ4 để có p95 tin cậy).
+
+**Cost per query** tính theo **giá niêm yết Gemini** (tại thời điểm 04/2026):
+
+$$
+\operatorname{cost}(q) = \frac{\operatorname{tokens\_in}}{10^{6}} \cdot P_{\text{in}} + \frac{\operatorname{tokens\_out}}{10^{6}} \cdot P_{\text{out}}
+$$
+
+với Gemini 3.1 Flash Lite: $P_{\text{in}} = \$0.075$, $P_{\text{out}} = \$0.30$ /1M token. Dữ liệu token lấy từ **LangSmith trace** (metadata `total_tokens`).
+
+---
+
+### 10.8 Cosine similarity (dùng trong retriever, không phải metric đánh giá)
+
+$$
+\operatorname{cos}(\mathbf{a}, \mathbf{b}) \;=\; \frac{\mathbf{a}\cdot\mathbf{b}}{\lVert\mathbf{a}\rVert_2\,\lVert\mathbf{b}\rVert_2}
+\;=\; \frac{\sum_{k} a_k b_k}{\sqrt{\sum_{k} a_k^{2}}\,\sqrt{\sum_{k} b_k^{2}}}
+$$
+
+Sau L2-normalize ở §4.3.2, rút gọn còn **dot product**:
+$\operatorname{cos}(\hat{\mathbf{a}}, \hat{\mathbf{b}}) = \hat{\mathbf{a}}\cdot\hat{\mathbf{b}}$.
+
+---
+
+### 10.9 Tóm tắt: metric nào cho câu hỏi nào?
+
+| Muốn đo | Metric | Công thức | Khi nào quan trọng |
+|---|---|---|---|
+| Hệ thống có kéo đúng khoản lên không? | **MRR, Recall@k** | §10.3 | Debug retriever |
+| Hệ thống có sắp đúng khoản ở top không? | **nDCG@k** | §10.3.3 | So sánh reranker |
+| Câu trả lời có từ khoá đúng không? | **Token-F1** | §10.4.1 | QA span-style |
+| Câu trả lời có giữ cấu trúc không? | **ROUGE-L** | §10.4.2 | Summarization |
+| Generator có trích đúng nguồn không? | **Cit-P/R/F1** | §10.5 | **Quan trọng nhất cho pháp lý** |
+| Hệ thống có bịa không? | **Refusal + Cit-R** đi chung | §10.6.1 | Hallucination audit |
+| Routing có đúng không? | **Category Acc** | §10.6.2 | Agentic workflow |
+| Ngân sách token? | **tokens, cost** | §10.7 | Production planning |
+
+---
+
+## 11. Đánh giá tổng thể — RQ1 & RQ8
+
+### 11.1 RQ1: Baseline 3 pipeline
+
+So sánh 3 chiến lược trên cùng 25 câu gold:
+
+| Pipeline | F1 | ROUGE-L | Cit-P | Cit-R | Cit-F1 | Category Acc | Latency |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Gemini only | **0.393** | **0.324** | 0.20 | 0.20 | 0.20 | — | **9.0s** |
+| Vanilla RAG | 0.194 | 0.163 | 0.221 | 0.44 | 0.237 | 0.80 | 10.1s |
+| **Agentic RAG** | 0.346 | 0.295 | 0.209 | **0.56** | 0.218 | **1.00** | 18.4s |
+
+### 11.2 Diễn giải RQ1
+
+- **Gemini only F1 cao nhất nhưng Cit-R chỉ 0.20** — model "biết" mức phạt từ data train nhưng bịa nguồn (trích Nghị định cũ).
+- **Vanilla RAG Cit-R 0.44 nhưng F1 thấp** — trả lời súc tích đúng khoản, không "lan man".
+- **Agentic RAG Cit-R 0.56 (cao nhất)** + **category accuracy 100%** (phân loại out-of-scope/chit-chat đúng 100%).
+- **Latency:** Agentic gấp đôi (18s vs 9s) do thêm analyzer + fallback. Đây là đánh đổi chấp nhận được cho use case pháp lý.
+
+### 11.3 RQ8: LangSmith cost breakdown
+
+Từ 500 run thực trong project `Traffic-RAG-Evaluation`:
+
+| Node | Count | Mean (s) | p95 (s) | Error rate | Tokens/run | Cost/run ($) |
+|---|---:|---:|---:|---:|---:|---:|
+| LangGraph (root) | 29 | 15.89 | 57.28 | 0.00 | 28 836 | 0.00882 |
+| **legal_rag** | 20 | 10.85 | 55.03 | 0.00 | **39 749** | **0.01020** |
+| analyzer | 25 | 8.30 | 17.27 | 0.00 | 934 | 0.00038 |
+| web_search | 4 | 8.52 | 9.11 | 0.00 | 4 440 | 0.00170 |
+| chit_chat | 1 | 1.60 | — | 0.00 | 144 | 0.00009 |
+
+![RQ8 Latency histogram](../research/results/figures/rq8_latency_hist.png)
+![RQ8 Node breakdown](../research/results/figures/rq8_node_breakdown.png)
+![RQ8 Error rate](../research/results/figures/rq8_error_rate.png)
+
+### 11.4 Diễn giải RQ8
+
+- **`legal_rag` là cost center** — 39k token/call ($0.010), do bơm 10 chunk × ~400 token vào prompt.
+- **Analyzer rẻ** ($0.0004) nhờ prompt ngắn + structured output tiết kiệm token.
+- **p95 cao (55s)** chỉ xuất hiện ở legal_rag khi generator viết câu trả lời dài cho multi-intent. Median 4.6s.
+- **Error rate = 0%** trong phạm vi Traffic-RAG (LangGraph, legal_rag, analyzer). Error rate 100% ở faithfulness/answer_relevancy là **Ragas judge calls** — bị rate limit, không liên quan sản phẩm.
+
+### 11.5 Tổng chi phí ước tính
+
+- **~$0.013 / query** (analyzer + legal_rag).
+- **10 000 query / tháng = $130 LLM cost** (chưa tính Tavily và hosting).
+- Nếu tối ưu top_k=10 → 5, có thể cắt 50% cost của `legal_rag`. Đánh đổi: R@10 giảm xuống R@5 = 0.40. **Dành cho v7.**
+
+---
+
+## 12. Hạn chế và hướng phát triển
+
+### 12.1 Hạn chế hiện tại
+
+1. **Gold dataset nhỏ (25 câu)** — khoảng tin cậy rộng ở per-category metric. Kế hoạch: mở rộng lên 200 câu do luật sư review.
+2. **Cit-R trung bình 0.56** — 44% citation chưa khớp khoản (nhưng khớp Điều). Gốc: chunk khoản nhiều điểm đôi khi trích nhầm điểm.
+3. **Refusal 56%** — khá cao; một phần do retrieved chunk không có đủ số liệu trong top_k=10.
+4. **Không có reranker** — sau fuse RRF, chưa có bước rerank bằng cross-encoder. Thêm BGE-reranker-v2 kỳ vọng nâng R@10 thêm 5-8 điểm.
+5. **Latency agentic 18s** — chủ yếu ở LLM gen. Có thể cắt bằng streaming cộng prompt caching (Gemini hỗ trợ).
+6. **Không real-time update** — văn bản mới phải re-index offline. Kế hoạch: hot-reload collection qua Qdrant alias.
+7. **Tiếng Anh không hỗ trợ** — e5-small có khả năng nhưng corpus toàn tiếng Việt.
+
+### 12.2 Hướng phát triển
+
+| Ưu tiên | Mục | Dự kiến |
+|---|---|---|
+| P0 | BGE-reranker-v2 sau RRF | R@10 +5-8pt |
+| P0 | Gold dataset 200 câu | khoảng tin cậy chặt |
+| P1 | Prompt caching Gemini | −30% cost |
+| P1 | Fine-tune e5-small trên (query, khoản) pair | MRR +5pt |
+| P2 | Multi-hop reasoning (Điều A → B → C) | Cit-R cho cross-ref |
+| P2 | Judge đa model (GPT-4 + Claude + Gemini) | giảm bias |
+| P3 | Web UI React thay Streamlit | UX tốt hơn |
+| P3 | Mobile app | expose qua API gateway |
+
+---
+
+## 13. Phụ lục
+
+### 13.1 Changelog v5.5 → v6.0 (25/04/2026)
+
+**Thay đổi lớn:**
+
+1. **Migrate embedding** sbert → e5-small — kết quả RQ3 (MRR 3×, nhanh 2.5×).
+2. **Thêm collection mới** `traffic_law_v3_e5` (384d). Giữ `traffic_law_v2` làm fallback.
+3. **Tắt query rewrite** ở turn đầu — kết quả RQ9 (MRR giảm 35% khi rewrite).
+4. **Cập nhật indexer** — prefix `"passage: "` cho E5; query dùng `"query: "`.
+5. **Thêm RQ9 ablation** vào research stack.
+6. **Cập nhật report** — mọi ablation (RQ1-RQ9) có số liệu thật + 12 figure PNG.
+
+**Breaking changes:**
+
+- `COLLECTION_NAME` default đổi. Deployment cũ cần set biến env hoặc re-index.
+- `make_analyzer_node` signature giữ nguyên nhưng behavior khác (turn đầu bypass).
+
+### 13.2 Cấu trúc repo
+
+```
+traffic_rag/
+├── api/                        # FastAPI backend
+│   └── main.py
+├── app/                        # Streamlit frontend
+│   └── streamlit_app.py
+├── source/
+│   ├── ingestion/              # .docx/.md → JSON → chunks
+│   │   ├── docx_to_markdown.py
+│   │   ├── md_to_json.py
+│   │   ├── hierarchical_chunker.py
+│   │   ├── fixed_size_chunker.py   # dùng riêng cho RQ2
+│   │   └── aggregator.py
+│   ├── indexing/               # Qdrant + embedding
+│   │   ├── indexer.py
+│   │   └── indexer_fixed512.py     # dùng riêng cho RQ2
+│   ├── rag_core/               # retriever + generator
+│   │   ├── retriever.py
+│   │   └── generator.py
+│   └── agent/                  # LangGraph
+│       ├── nodes.py
+│       └── graph.py
+├── Data/
+│   ├── raw/*.docx|.pdf
+│   ├── preprocessed/*.md
+│   ├── processed/*.json
+│   └── all_chunks.jsonl            # 2 705 chunks
+├── research/
+│   ├── data/eval_qa.jsonl          # 25 gold questions
+│   ├── scripts/rq[1-9]_*.py
+│   ├── notebooks/*.ipynb
+│   ├── results/
+│   │   ├── metrics/*.csv
+│   │   └── figures/*.png
+│   └── report/analysis.md
+├── doc/bao_cao_he_thong.md         # (file này)
+├── docker-compose.yml
+└── requirements.txt
+```
+
+### 13.3 Dependencies chính
+
+```
+python==3.11
+langgraph==0.2.*
+langchain-google-genai==1.0.*
+langchain-core==0.3.*
+qdrant-client==1.7.*
+sentence-transformers==2.7.*
+rank-bm25==0.2.*
+pyvi==0.1.*
+tavily-python==0.3.*
+fastapi==0.110.*
+streamlit==1.32.*
+pydantic==2.6.*
+python-docx==1.1.*
+langsmith==0.1.*
+```
+
+### 13.4 Môi trường cần thiết
+
+```
+GOOGLE_API_KEY=...              # Gemini
+TAVILY_API_KEY=...              # web search
+LANGCHAIN_API_KEY=...           # tracing
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_PROJECT=Traffic-RAG-Evaluation
+QDRANT_HOST=localhost
+COLLECTION_NAME=traffic_law_v3_e5
+```
+
+### 13.5 Quick start
 
 ```bash
 # 1. Khởi động Qdrant
 docker compose up -d qdrant
 
-# 2. Cài Python deps (venv: /home/pphong/venv/LLM_Agentic)
-source /home/pphong/venv/LLM_Agentic/bin/activate
-pip install -r requirements.txt
-
-# 3. Data ingestion (chỉ lần đầu)
-python -m source.ingestion.clean_luat_pdfs
-python -m source.ingestion.clean_nghidinh_pdfs
-python -m source.ingestion.clean_thongtu_pdfs
-
-# 4. Semantic chunking (chỉ lần đầu)
-python -m source.ingestion.semantic_chunker
-
-# 5. Indexing → Qdrant (chỉ lần đầu)
+# 2. Index (lần đầu hoặc sau khi có văn bản mới)
+python -m source.ingestion.aggregator
 python -m source.indexing.indexer --recreate
 
-# 6. FastAPI backend
-python -m uvicorn traffic_rag.api.main:app --host 0.0.0.0 --port 8000
+# 3. Chạy backend + UI
+docker compose up -d api ui
 
-# 7. Streamlit frontend (cửa sổ terminal khác)
-streamlit run traffic_rag/ui/app.py --server.port 8501
+# 4. Truy cập UI
+open http://localhost:8501
 ```
 
-### 8.6 Biến môi trường
+### 13.6 Chạy lại toàn bộ research
 
-```env
-GOOGLE_API_KEY=...                                      # Google Gemini
-TAVILY_API_KEY=...                                      # Tavily web search
-GENERATOR_MODEL=gemini-3.1-flash-lite-preview           # optional override
-CHECKPOINT_DB=traffic_rag/checkpoints/graph.db          # optional override
-API_KEY=...                                             # alias cũ, auto-map → GOOGLE_API_KEY nếu thiếu
+```bash
+cd research
+# Các script độc lập — có thể chạy song song (trừ script dùng Gemini → chạy tuần tự)
+python scripts/rq1_baselines.py
+python scripts/rq2_chunking_ablation.py
+python scripts/rq3_embedding_ablation.py
+python scripts/rq4_vectordb_real.py
+python scripts/rq5_prompts_ablation.py
+python scripts/rq8_langsmith_pull.py
+python scripts/rq9_rewrite_ablation.py
 ```
 
 ---
 
-## Phụ lục A — Tổng kết kỹ thuật
+**Hết báo cáo v6.0.**
 
-| Chỉ số                           | Giá trị                                  |
-| -------------------------------- | ---------------------------------------- |
-| Tổng văn bản pháp luật           | 20+ (Luật/NĐ/TT)                         |
-| Tổng chunks sau xử lý            | **2.705**                                |
-| Tổng token corpus (BM25)         | 424.677                                  |
-| Embedding dimension              | 384                                      |
-| Retrieval top-k                  | 10 (default) / 20 (broad query)          |
-| Candidates per retriever         | 30                                       |
-| RRF `k`                          | 60                                       |
-| Sibling `max_neighbors`          | 2 (±2 Khoản)                             |
-| Cross-reference doc_id mặc định  | `168/2024/NĐ-CP`                         |
-| Generator temperature            | 0.1                                      |
-| Generator max tokens             | 1024                                     |
-| Chat history cap                 | 20 messages (~10 turns)                  |
-| HITL gate                        | `interrupt_before=["web_finalize"]`      |
-| Checkpointer                     | `AsyncSqliteSaver`                       |
-| Whitelisted Tavily domains       | 12 trang luật VN uy tín                  |
-| Hierarchical chunking thresholds | Điều ≤ 600 / Khoản ≤ 500 / min 30 tokens |
-
-### Pipeline so sánh thời gian (tham khảo, CPU-only)
-
-| Giai đoạn                                       | Thời gian điển hình |
-| ----------------------------------------------- | ------------------- |
-| Retriever init (E5 load + BM25 corpus build)    | ~8–12 s cold start  |
-| `_tokenize_vi` + BM25 score (2705 docs)         | ~50 ms              |
-| Qdrant dense search (top-30)                    | ~30 ms              |
-| RRF fuse + sibling enrich                       | ~5 ms               |
-| Cross-reference pass (regex + dict lookup)      | < 1 ms              |
-| Analyzer LLM call (Gemini Flash Lite)           | ~1.5–2.5 s          |
-| Generator LLM call                              | ~2–4 s              |
-| **Tổng round-trip `/chat`**                     | **~4–7 s**          |
-
----
-
-## Phụ lục B — Changelog v5.5 → v5.6
-
-### B.1 Bỏ hoàn toàn cơ chế `risk_flag` (breaking)
-
-**Lý do:** sau khi HITL được đặt đúng chỗ (chỉ chặn `web_finalize`), câu trả lời RAG từ corpus đã pháp điển hoá (NĐ 168/2024) là **đáng tin mặc định** — banner đỏ _"🛑 Câu hỏi liên quan chế tài nặng…"_ vừa gây cảm giác câu trả lời kém tin cậy, vừa noise UX cho từ khoá tra cứu phổ biến (tịch thu, tước GPLX, tạm giữ…). Risk-tag không có giá trị analytics (không ghi metric riêng) → xoá hẳn thay vì soft-hide.
-
-**Scope đã rip end-to-end:**
-
-| File                                                       | Thay đổi                                                          |
-| ---------------------------------------------------------- | ----------------------------------------------------------------- |
-| [source/agent/nodes.py](traffic_rag/source/agent/nodes.py) | Xoá `RISK_PATTERNS`, `risk_tag_node`                              |
-| [source/agent/graph.py](traffic_rag/source/agent/graph.py) | Xoá node `risk_tag`, xoá edge tương ứng; rút gọn flow             |
-| [source/agent/state.py](traffic_rag/source/agent/state.py) | Xoá field `risk_flag: bool`                                       |
-| [api/schemas.py](traffic_rag/api/schemas.py)               | Xoá `risk_flag` khỏi `ChatResponse`                               |
-| [api/main.py](traffic_rag/api/main.py)                     | Xoá `risk_flag=bool(...)` trong 3 chỗ tạo `ChatResponse`          |
-| [ui/app.py](traffic_rag/ui/app.py)                         | Xoá `st.warning("🛑 …")` + 3 lần ghi `risk_flag` vào history dict |
-
-### B.2 Thêm Cross-Reference Retrieval (feature)
-
-**Vấn đề:** câu hỏi dạng _"điểm h khoản 14 Điều 32 NĐ 168 là gì"_ bị generator refuse vì similarity search (RRF) dilute trên token có mặt ở nhiều chunk, chunk đích không lọt top-k.
-
-**Giải pháp (Option A — precise structural retrieval):**
-
-1. Retriever thêm method public [`get_chunks_by_location(doc_id, dieu, khoan, diem)`](traffic_rag/source/rag_core/retriever.py#L166-L207) — direct O(1) metadata lookup qua `_dieu_to_ids`, không qua similarity.
-2. Nodes thêm `_REF_DIEU/_REF_KHOAN/_REF_DIEM` regex + [`_extract_legal_references(*texts)`](traffic_rag/source/agent/nodes.py#L194-L228) parse 2 pattern:
-   - _"điểm X khoản Y [Điều Z]"_
-   - _"khoản Y Điều Z"_ (pull cả Khoản)
-3. Structural pass chèn vào [`legal_rag_node`](traffic_rag/source/agent/nodes.py#L254-L278) ngay sau `get_relevant_chunks` — merge non-duplicate vào chunks list trước khi generator chạy.
-
-**Smoke test (production log):**
-
-```
-Query: "điểm h khoản 14 Điều 32 Nghị định 168 quy định gì?"
-Log:   Reference-pass added 9 chunks
-       (refs=[{'doc_id':'168/2024/NĐ-CP','dieu':32,'khoan':'14','diem':'h'}, ...])
-Answer: "Điểm h khoản 14 Điều 32 NĐ 168/2024/NĐ-CP quy định về hành vi:
-         Đưa xe ô tô tải (kể cả rơ moóc và sơ mi rơ moóc) có kích thước
-         thùng xe không đúng với thông số kỹ thuật được ghi trong giấy
-         chứng nhận kiểm định ... [Điều 32, Khoản 14, Điểm h — NĐ 168/2024/NĐ-CP]"
-```
-
-**Giới hạn đã biết:** regex hiện chỉ mặc định doc_id `168/2024/NĐ-CP`. Nếu query không chỉ định nghị định mà hệ thống có nhiều NĐ cùng cấu trúc Điều/Khoản/Điểm → cần mở rộng regex phát hiện doc_id. Hoãn cho v5.7.
-
-### B.3 Cải thiện quy tắc 6 — Markdown nested list (UX)
-
-**Trước v5.6:** Rule 6 mô tả chung chung _"liệt kê 1., 2., 3."_ → LLM thường gộp sub-điểm `a) … b) … c) …` trên cùng một dòng, khó đọc.
-
-**Sau v5.6:** Rule 6 rewrite để buộc **xuống dòng từng sub-điểm** với thụt lề 3 space + dòng trống giữa các mục chính. Generator giờ trả về Markdown nested list đúng chuẩn, Streamlit render sạch.
-
-### B.4 Fix minor
-
-- `legal_rag_node` dùng đúng biến `top_k` đã tính thay vì hardcoded `top_k=20` (lỗi do IDE linter auto-fix trước đó).
-- Logging `Reference-pass added %d chunks` dùng counter `added` chính xác thay vì công thức `len(chunks) - len(seen_ids) + len(refs)` sai.
-
----
-
-## Phụ lục C — Changelog v5.6 → v5.8.1
-
-### C.1 Generator: Plain Language Enforcement (v5.7)
-
-**Vấn đề:** Các câu trả lời của LLM thường lặp lại nguyên văn văn bản luật, dẫn đến việc người dùng bình thường khó hiểu (đặc biệt khi mô tả hành vi).
-
-**Giải pháp:** Thêm **Rule 13** vào `SYSTEM_PROMPT` của `LegalAnswerGenerator`, buộc LLM phải sử dụng "ngôn ngữ dân dã, dễ hiểu" để mô tả vi phạm, trước khi đưa ra mức phạt. Rule 13 sư dụng ví dụ ❌ SAI và ✅ ĐÚNG rõ ràng để zero-shot prompt Gemini Flash Lite.
-Từ đó, thay vì "Điều khiển xe đi không đúng chiều đường của chiều đi", AI sẽ trả lời "Đi ngược chiều" một cách thân thiện, tăng cường trải nghiệm người dùng.
-
-### C.2 Retriever: Superseded Document Filtering (v5.8)
-
-**Vấn đề:** Luật Trật tự ATGT 2024 (Luật 36/2024) và Thông tư 35/2024 thay đổi hạng GPLX (B1, B2 gộp thành B; hạng A, C1...), tuy nhiên BM25 và Dense Search vẫn bị thu hút bởi các keyword có trong Thông tư 12/2017 (luật cũ), đẩy luật cũ lên Top-k và buộc Generator từ chối trả lời vì thiếu luật mới.
-
-**Giải pháp:**
-
-## Phụ lục D: Kết quả đánh giá định lượng (v5.8.2)
-
-Hệ thống đã được đánh giá qua tập dữ liệu 25 câu hỏi vàng (Gold Dataset) bao gồm 5 nhóm: mức phạt đơn giản, câu hỏi đa ý, tham chiếu chéo, thủ tục hành chính và câu hỏi ngoài phạm vi.
-
-### Bảng 1: So sánh hiệu năng giữa các Pipeline (RQ1)
-
-| Pipeline        | F1-Score (Token) | Latency (Giây) | Ghi chú                                     |
-| :-------------- | :--------------: | :------------: | :------------------------------------------ |
-| **Gemini Only** |       0.39       |     9.01s      | Không tra cứu, dễ bị ảo giác factual.       |
-| **Vanilla RAG** |       0.19       |     10.12s     | Tra cứu Top-K đơn thuần, dễ bỏ lỡ ngữ cảnh. |
-| **Agentic RAG** |     **0.36**     |     18.44s     | **Tăng +0.17 F1** so với Vanilla RAG.       |
-
-### Nhận xét:
-
-- **Độ chính xác:** Agentic RAG cải thiện vượt bậc so với Vanilla RAG nhờ khả năng mở rộng truy vấn (Query Expansion) và xử lý dẫn chiếu chéo. F1 của Agentic RAG tiệm cận Gemini Only nhưng đảm bảo tính chính xác về mặt pháp lý (có trích dẫn nguồn).
-- **Trải nghiệm người dùng:** Độ trễ 18.4s là mức chấp nhận được cho các tư vấn pháp lý phức tạp cần tính chính xác tuyệt đối.
-
-### Bảng 2: So sánh hiệu năng Vector Database (RQ4)
-
-_Thử nghiệm trên 500 chunks, đo trung bình 50 lượt truy vấn._
-
-| Tiêu chí            | Qdrant (Docker) | ChromaDB (In-memory) | Nhận xét                                               |
-| :------------------ | :-------------: | :------------------: | :----------------------------------------------------- |
-| **Search Latency**  |     0.015s      |        0.002s        | Chroma nhanh hơn do chạy cùng tiến trình (In-process). |
-| **Filtered Search** |   **0.003s**    |        0.001s        | Cả hai đều xử lý lọc rất nhanh.                        |
-| **Tính năng lọc**   |  **Rất mạnh**   |        Cơ bản        | Qdrant hỗ trợ lọc phức tạp (Match, Range) tốt hơn.     |
-
-**Kết luận:** Dù ChromaDB nhanh hơn một chút về độ trễ thô (do không tốn chi phí mạng tới Docker), chúng ta chọn **Qdrant** vì khả năng quản lý Payload chuyên nghiệp và tính sẵn sàng cho môi trường Production (như lọc luật hết hiệu lực).
-
-### Bảng 3: So sánh chất lượng kỹ thuật Prompt (RQ5)
-
-_Sử dụng Vanilla RAG Pipeline. Đo điểm F1-Score trên tập 25 câu hỏi mở._
-
-| Kỹ thuật Prompt                | F1-Score (Accuracy) | Ghi chú                                                                |
-| :----------------------------- | :-----------------: | :--------------------------------------------------------------------- |
-| **Base Prompt (Zero-Shot)**    |        0.14         | Prompt mặc định cơ bản, thường bỏ qua ngữ cảnh phụ.                    |
-| **Engineered Prompt (v5.8.2)** |      **0.15**       | Prompt đã tinh chỉnh (Rule 1-13), định dạng luật rõ ràng, dễ hiểu hơn. |
-
-**Nhận xét:** Việc áp dụng Prompt Engineering với các quy định khắt khe về định dạng trích dẫn và trả lời bằng ngôn ngữ đời thường (Rule 13) giúp duy trì sự chính xác (F1 tăng nhẹ) đồng thời tạo ra văn phong chuyên nghiệp và an toàn hơn so với việc để LLM tự do phản hồi.
-
----
-
-_Cập nhật lần cuối: 24/04/2026 bởi Antigravity AI._
-
-- Cập nhật payload trực tiếp trong Qdrant bằng `client.set_payload()`, đổi thuộc tính `status` của 134 chunk thuộc TT 12/2017 thành `"superseded"`.
-- BM25 cũng áp dụng bộ lọc `status="active"` ngay lúc khởi chạy `TrafficHybridRetriever._build_bm25_corpus`.
-  Nhờ cơ chế này, hệ thống RAG miễn nhiễm với nhiễu từ các văn bản đã hết hiệu lực mà không cần phải xóa chúng ra khỏi CSDL, đảm bảo câu trả lời luôn cập nhật nhất (theo GPLX 2024 mới).
-
-### C.3 Analyzer: Intent Retention & Broad Query Expansion (v5.8.1)
-
-**Vấn đề:** Khi người dùng hỏi gộp nhiều ý (ví dụ: "khi nào áp dụng và có những hạng nào"), Analyzer thường bị miss ý thứ hai trong quá trình sinh `expanded_query`. Retriever thiếu các query liên quan đến liệt kê (ví dụ: "gồm những hạng nào", "có mấy loại").
-
-**Giải pháp:**
-
-1. Thêm chỉ thị **GIỮ NGUYÊN MỌI INTENT** trực tiếp vào `ANALYZER_SYSTEM_PROMPT` trong `nodes.py`, ép LLM không được lược bỏ bất kỳ ý phụ nào của User khi dịch sang thuật ngữ tra cứu.
-2. Mở rộng bộ regex `BROAD_QUERY_PATTERNS` để detect nhiều trường hợp hỏi liệt kê danh sách: `r"\bhạng nào\b", r"\bcác hạng\b", r"\bbao gồm\b"...`
-3. Nâng `LEGAL_RAG_TOP_K_DEFAULT` lên 15 và `LEGAL_RAG_TOP_K_BROAD` lên 25 để tăng Window Context khi xử lý các câu hỏi đa ý đồ và phạm vi rộng (Broad).
-
----
-
-_Báo cáo được cập nhật từ mã nguồn hiện hành. Mọi chỉ số kỹ thuật (2.705 chunks, 424.677 tokens, top-k 10/20. RRF k=60…) được đọc trực tiếp từ log uvicorn lifespan + nguồn code tại `traffic_rag/source/`._
+Mọi thay đổi cho v7 nên giữ cấu trúc "Research → Quyết định → Kiến trúc chi tiết" để tài liệu luôn **tự chứng minh** từng lựa chọn thiết kế bằng số liệu.

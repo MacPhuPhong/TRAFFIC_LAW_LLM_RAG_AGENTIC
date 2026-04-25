@@ -290,6 +290,14 @@ METADATA_RULES: dict[str, dict] = {
         "effective_date": "2024-11-15",
         "topic":          "Tuần tra",
     },
+    "TT72_2024_BCA_Quytrinh_Dieutra": {
+        "doc_id":         "72/2024/TT-BCA",
+        "title":          "Thông tư 72/2024/TT-BCA (Quy trình điều tra, giải quyết tai nạn giao thông đường bộ của CSGT)",
+        "issuer":         "Bộ Công an",
+        "status":         "active",
+        "effective_date": "2025-01-01",
+        "topic":          "Điều tra TNGT",
+    },
     "nd135_2021_ChinhPhu_ThietBi_NghiepVu": {
         "doc_id":         "135/2021/NĐ-CP",
         "title":          "Nghị định 135/2021/NĐ-CP (Thiết bị nghiệp vụ)",

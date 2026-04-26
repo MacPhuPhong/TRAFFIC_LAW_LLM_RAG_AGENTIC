@@ -121,6 +121,10 @@ async def lifespan(app: FastAPI):
     app.state.tavily = tavily
     app.state.graph = graph
     app.state._ckpt_conn = conn
+    # In-memory registry of threads paused at web_finalize awaiting admin
+    # review. Populated by /chat, drained by /resume. Each entry holds the
+    # info an admin needs to make a decision.
+    app.state.pending_threads = {}
     logger.info("API ready.")
 
     yield
@@ -210,6 +214,17 @@ async def chat(req: ChatRequest):
     if _is_paused_on_web_review(snap):
         logger.info("CHAT [%s]: paused at web_finalize — awaiting human review", thread_id)
         values = snap.values or {}
+        import time as _time
+        app.state.pending_threads[thread_id] = {
+            "thread_id": thread_id,
+            "query": req.query,
+            "draft_answer": values.get("draft_answer"),
+            "sources": values.get("sources", []),
+            "category": values.get("category"),
+            "model_info": values.get("model_info"),
+            "expanded_query": values.get("expanded_query"),
+            "created_at": _time.time(),
+        }
         return ChatResponse(
             thread_id=thread_id,
             status="pending_web_review",
@@ -262,6 +277,7 @@ async def resume(thread_id: str, req: ResumeRequest):
         )
         await _append_chat_history(graph, config, user_text, rejection_msg, [])
         snap = await graph.aget_state(config)
+        app.state.pending_threads.pop(thread_id, None)
         return ChatResponse(
             thread_id=thread_id,
             status="rejected",
@@ -280,8 +296,23 @@ async def resume(thread_id: str, req: ResumeRequest):
     snap = await graph.aget_state(config)
     resp = _snapshot_to_response(thread_id, snap)
     await _append_chat_history(graph, config, user_text, resp.answer or "", resp.sources)
+    app.state.pending_threads.pop(thread_id, None)
     return resp
 
+
+
+@app.get("/pending")
+async def pending_list():
+    """List all threads currently paused at web_finalize awaiting admin review.
+
+    Sorted by creation time descending (newest first).
+    """
+    items = sorted(
+        app.state.pending_threads.values(),
+        key=lambda x: x.get("created_at", 0.0),
+        reverse=True,
+    )
+    return {"count": len(items), "items": items}
 
 
 @app.get("/pending/{thread_id}", response_model=PendingResponse)

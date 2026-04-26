@@ -44,3 +44,7 @@ checkpoints/
 *.db
 *.sqlite
 *.sqlite3
+
+# Next.js
+app/nextjs-app/node_modules/
+app/nextjs-app/.next/

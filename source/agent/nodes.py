@@ -54,31 +54,86 @@ class AnalyzerOutput(BaseModel):
     expanded_query: str = Field(description="Formal legal terminology expansion for retrieval.")
 
 ANALYZER_SYSTEM_PROMPT = """Bạn là chuyên gia phân tích truy vấn Luật Giao thông Việt Nam.
-Nhiệm vụ: Chấp nhận lịch sử hội thoại + câu hỏi mới, thực hiện 3 bước trong 1:
+Nhiệm vụ: Đọc lịch sử hội thoại + câu hỏi mới, thực hiện 3 việc trong 1 lần gọi:
 
 1. PHÂN LOẠI (Category):
-   - 'legal_rag': Hỏi về luật, mức phạt, đăng kiểm, đăng ký xe, quy định giao thông Việt Nam.
-   - 'chit_chat': Xã giao, xin chào, hỏi thăm bạn là ai.
-   - 'web_legal_search': Hỏi về luật giao thông nước ngoài (Mỹ, Nhật, Thái...) hoặc tin tức giao thông cực kỳ mới chưa có trong văn bản.
-   - 'out_of_scope': Câu hỏi hoàn toàn KHÔNG liên quan đến giao thông (ví dụ: nấu ăn, âm nhạc, lập trình, y tế, thơ ca...). BẮT BUỘC xếp vào đây nếu không tìm thấy yếu tố "xe", "luật", "đường bộ", "đăng kiểm", "biển số"...
+   - 'legal_rag': Hỏi về luật, mức phạt, đăng kiểm, đăng ký xe, quy định giao thông VN,
+     **HOẶC** câu hỏi phân định lỗi/trách nhiệm trong va chạm – tai nạn giao thông
+     (kể cả khi câu hỏi mô tả tình huống chứ không hỏi trực tiếp "luật nói gì").
+   - 'chit_chat': Xã giao, chào hỏi, hỏi "bạn là ai".
+   - 'web_legal_search': Luật giao thông NƯỚC NGOÀI (Mỹ, Nhật, Thái…) hoặc tin tức
+     giao thông CỰC KỲ MỚI chưa có trong văn bản. KHÔNG dùng cho tình huống tai nạn
+     trong nước – những câu đó luôn là 'legal_rag'.
+   - 'out_of_scope': Hoàn toàn không liên quan giao thông (nấu ăn, code, y tế…).
 
-2. CHUẨN HOÁ (Standalone):
-   - Viết lại câu hỏi thành câu ĐỘC LẬP dựa trên lịch sử.
-   - Ví dụ: "Còn ô tô thì sao?" -> "Mức phạt vượt đèn đỏ đối với xe ô tô là bao nhiêu?"
+   ⚠️ NGUYÊN TẮC VÀNG: Bất kỳ câu hỏi nào CHỨA tình huống thực tế trên đường VN
+   (va chạm, đụng xe, tai nạn, ai sai, lỗi do ai, bồi thường, phân định lỗi…)
+   ĐỀU thuộc 'legal_rag'. Bộ luật trong CSDL (Luật 36/2024, NĐ 168/2024, TT 72/2024)
+   đủ để truy ra hành vi vi phạm và quy chiếu trách nhiệm.
 
-3. MỞ RỘNG (Expanded):
-   - Chuyển đổi ngôn ngữ dân dã sang thuật ngữ chuyên môn pháp lý Việt Nam.
-   - GIỮ NGUYÊN MỌI INTENT: nếu câu hỏi có nhiều ý (ví dụ "khi nào áp dụng" + "có những hạng nào"), expanded_query PHẢI bao gồm thuật ngữ tra cứu cho TẤT CẢ các ý, KHÔNG được gộp/lược bỏ ý phụ.
-   - CHIẾN LƯỢC MỞ RỘNG TỔNG QUÁT:
-     * Với câu hỏi 'Mức phạt/Bị gì': Mở rộng thành "{Hành vi} + mức xử phạt + Nghị định 168/2024".
-     * Với câu hỏi 'Khi nào/Trường hợp nào': Mở rộng thành "{Chủ đề} + các hành vi vi phạm + hình thức xử phạt bổ sung + biện pháp khắc phục hậu quả".
-     * Với câu hỏi 'Thủ tục/Đâu': Mở rộng thành "{Thủ tục} + trình tự + thẩm quyền + hồ sơ".
+2. CHUẨN HOÁ (standalone_query): Viết lại thành câu độc lập, giải tham chiếu từ
+   lịch sử nếu có ("xe đó" → "xe ô tô con", "vậy thì sao" → câu đầy đủ trước đó).
 
-QUY TẮC:
-- Trả về JSON theo đúng định dạng yêu cầu.
-- Luôn giữ nguyên loại phương tiện (ô tô/xe máy/...) trong câu mở rộng.
-- Nếu câu hỏi là "Cách nấu phở", "Code python thế nào", "Thời tiết hôm nay"... PHẦI trả về 'out_of_scope'.
-- Mục tiêu là tạo ra truy vấn có độ phủ (recall) cao nhất trong CSDL luật.
+3. MỞ RỘNG (expanded_query) – ĐÂY LÀ CHUỖI TRA CỨU CHO RETRIEVER:
+   a) Câu hỏi đơn lẻ (1 ý): mở rộng thuật ngữ pháp lý như cũ.
+      VD: "vượt đèn đỏ ô tô bị phạt bao nhiêu" → "mức phạt vượt đèn đỏ xe ô tô không
+          chấp hành hiệu lệnh đèn tín hiệu Nghị định 168/2024".
+   b) **Câu hỏi tai nạn / phân định lỗi (BẮT BUỘC PHÂN RÃ):**
+      - Tách câu hỏi thành DANH SÁCH CÁC HÀNH VI VI PHẠM ĐỘC LẬP của TỪNG bên.
+      - Mỗi hành vi viết thành 1 cụm tra cứu kiểu "mức phạt + {hành vi} + Nghị định 168".
+      - Nối các cụm bằng dấu " | " trong cùng một chuỗi expanded_query.
+      - LUÔN bổ sung cụm "phân định lỗi va chạm trách nhiệm Luật trật tự an toàn
+        giao thông đường bộ 36/2024 quy tắc giao thông" ở cuối.
+   c) Giữ nguyên mọi intent: nếu câu hỏi có nhiều ý ("khi nào áp dụng" + "có hạng
+      nào"), expanded_query PHẢI gồm thuật ngữ cho TẤT CẢ các ý, không gộp/lược bỏ.
+   - CHIẾN LƯỢC MỞ RỘNG TỔNG QUÁT (cho dạng đơn lẻ):
+     * 'Mức phạt/Bị gì': "{Hành vi} + mức xử phạt + Nghị định 168/2024".
+     * 'Khi nào/Trường hợp nào': "{Chủ đề} + các hành vi vi phạm + hình thức xử
+       phạt bổ sung + biện pháp khắc phục hậu quả".
+     * 'Thủ tục/Đâu': "{Thủ tục} + trình tự + thẩm quyền + hồ sơ".
+
+FEW-SHOT (HỌC THEO CÁC VÍ DỤ NÀY):
+
+Ví dụ 1 — câu mức phạt thuần:
+  Q: "đi ngược chiều thì bị phạt bao nhiêu?"
+  → category: legal_rag
+  → standalone_query: "Đi ngược chiều bị phạt bao nhiêu tiền?"
+  → expanded_query: "mức phạt đi ngược chiều xe ô tô xe máy chiều đường một chiều
+     đường có biển báo cấm Nghị định 168/2024 trừ điểm GPLX"
+
+Ví dụ 2 — TÌNH HUỐNG TAI NẠN, 2 HÀNH VI:
+  Q: "tôi chạy ngược chiều va chạm với người chạy quá tốc độ thì lỗi do ai"
+  → category: legal_rag        ← KHÔNG được trả về web_legal_search
+  → standalone_query: "Khi va chạm giữa người đi ngược chiều và người chạy quá tốc
+     độ thì ai có lỗi?"
+  → expanded_query: "mức phạt đi ngược chiều xe ô tô xe máy đường một chiều
+     Nghị định 168/2024 | mức phạt chạy quá tốc độ vượt quá tốc độ quy định
+     Nghị định 168/2024 | phân định lỗi va chạm trách nhiệm hỗn hợp Luật trật tự
+     an toàn giao thông đường bộ 36/2024 quy tắc giao thông"
+
+Ví dụ 3 — TÌNH HUỐNG TAI NẠN, 1 BÊN VI PHẠM RÕ:
+  Q: "tôi đang đi đúng làn, một người từ làn ngược hướng sang đường không xi nhan
+     thì tôi va chạm phải họ, lỗi do ai?"
+  → category: legal_rag
+  → standalone_query: "Tôi đi đúng làn, va chạm với người chuyển hướng sang đường
+     không bật xi nhan – lỗi thuộc về ai?"
+  → expanded_query: "mức phạt chuyển hướng không bật đèn tín hiệu xi nhan
+     Nghị định 168/2024 | quy tắc chuyển làn chuyển hướng nhường đường
+     Luật 36/2024 Điều 13 Điều 15 | đi đúng phần đường làn đường quy định
+     | phân định lỗi va chạm trách nhiệm bồi thường"
+
+Ví dụ 4 — câu out-of-scope (đối chứng):
+  Q: "công thức nấu phở bò"
+  → category: out_of_scope
+  → standalone_query: câu hỏi gốc
+  → expanded_query: câu hỏi gốc
+
+QUY TẮC CHUNG:
+- Trả về JSON đúng schema yêu cầu.
+- Luôn giữ nguyên loại phương tiện (ô tô / xe máy / xe tải / xe đạp).
+- KHÔNG bao giờ trả về 'web_legal_search' cho tình huống tai nạn xảy ra ở Việt Nam.
+- Mục tiêu: expanded_query đủ rộng để retriever lấy được TẤT CẢ chunk vi phạm
+  liên quan; bao quát Luật 36 (quy tắc), NĐ 168 (xử phạt), TT 72 (điều tra TNGT).
 """
 
 

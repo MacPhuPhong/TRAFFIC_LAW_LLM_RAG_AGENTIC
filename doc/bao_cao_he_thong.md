@@ -484,17 +484,21 @@ for field, schema in [
 
 Mặc định HNSW `m=16, ef_construct=100`. Không override vì 2 705 point chưa cần fine-tune graph.
 
-### 5.5 Thống kê sau indexing (v6.0)
+### 5.5 Thống kê sau indexing (v6.1, 25/04/2026)
 
 | Tham số | Giá trị |
 |---|---|
 | Collection | `traffic_law_v3_e5` |
-| Points | 2 705 |
+| Points | **2 818** (v6.0: 2 705 + 113 chunk TT 72/2024/TT-BCA) |
 | Dim × Distance | 384 × Cosine |
 | Payload indexes | 4 KEYWORD |
-| Disk (vol Docker) | ~12 MB |
-| Index time (CPU) | 333 s embed + 8 s upsert |
-| Fallback | `traffic_law_v2` (sbert 768d) vẫn giữ |
+| Disk (vol Docker) | ~13 MB |
+| Index time (CPU) | ~350 s embed + 9 s upsert (re-index toàn bộ sau khi thêm TT72) |
+| Fallback | `traffic_law_v2` (sbert 768d) vẫn giữ — chưa có TT72 |
+
+> **Văn bản mới bổ sung (v6.1):** Thông tư 72/2024/TT-BCA về *Quy trình điều tra,
+> giải quyết tai nạn giao thông đường bộ của CSGT* — 113 chunk (L1: 17 / L2: 64
+> / L3: 32), 29 Điều. Nguồn dữ liệu cho Quy tắc 14 của Generator (xem §8.6).
 
 ---
 
@@ -717,7 +721,7 @@ Generator dùng LLM đóng vai trò "copy-paste thông minh" — trả lời t�
 
 Hệ thống production dùng P2 ([source/rag_core/generator.py:25](../source/rag_core/generator.py#L25)).
 
-### 7.4 Kiến trúc prompt P2 (12 rules)
+### 7.4 Kiến trúc prompt P2 (14 rules — cập nhật v6.1)
 
 **Role:**
 > "Bạn là Trợ lý Pháp lý Giao thông Việt Nam — chuyên gia tư vấn các văn bản quy phạm pháp luật mới nhất (2024–2025)."
@@ -726,16 +730,22 @@ Hệ thống production dùng P2 ([source/rag_core/generator.py:25](../source/ra
 
 1. **Chỉ dùng NGỮ CẢNH** — không suy luận ngoài ngữ cảnh.
 2. **Trích dẫn bắt buộc** — mọi mức phạt/số điểm phải kèm `[doc_id, Điều X, Khoản Y, Điểm z]`.
-3. **Từ chối rõ ràng** — nếu không đủ, trả "Không đủ thông tin trong ngữ cảnh, vui lòng hỏi cụ thể hơn."
+3. **Từ chối rõ ràng** — nếu không đủ, trả "Thông tin này không có trong tài liệu được cung cấp."
 4. **Không tự nghĩ số tiền** — copy nguyên chuỗi "từ 4.000.000 đến 6.000.000 đồng".
 5. **Ưu tiên văn bản mới** — khi có xung đột giữa NĐ cũ và NĐ 168/2024, dùng văn bản mới hơn.
-6. **Đa ý tách bullet** — mỗi câu con (mức phạt, trừ điểm, tước bằng) một bullet riêng.
-7. **Không chào hỏi, không xin lỗi** — đi thẳng vào câu trả lời.
-8. **Giải thích khi có thuật ngữ** — "GPLX = giấy phép lái xe" nếu user dùng "bằng lái".
-9. **Không kết luận pháp lý cá nhân** — không nói "bạn đã vi phạm".
-10. **Ngôn ngữ:** tiếng Việt, thuật ngữ pháp lý chuẩn.
-11. **Dạng `sources`:** JSON array `[{doc_id, dieu, khoan, diem}]` chính xác theo metadata chunk được dùng.
-12. **Đo lường:** Mỗi số tiền phải có đơn vị (đồng), mỗi trừ điểm có "điểm GPLX".
+6. **Đa ý tách bullet** — Markdown phân cấp `###` + `-`, in đậm số tiền/số điểm/thời gian.
+7. **Phân biệt kinh doanh vận tải** — ưu tiên NĐ 10/2020 cho xe KD; ngược lại bỏ qua.
+8. **Loại phương tiện trong NĐ 168** — Đ6 ô tô, Đ7 mô tô/gắn máy, Đ8 xe chuyên dùng, Đ9 xe đạp/thô sơ.
+9. **Sibling chunk** — chunk gắn `[Ngữ cảnh bổ sung — cùng Điều]` được phép dùng để hoàn thiện câu trả lời.
+10. **Cross-reference 3 bước** — phạt-tiền + trừ-điểm trong NĐ 168 phải ghép từ Khoản phạt × Khoản tham chiếu (Đ6.K13–K16).
+11. **Không từ chối nếu có 1 phần** — tìm được mức phạt nhưng thiếu số điểm trừ → trả phần tìm được + ghi chú phần thiếu.
+12. **Tổng hợp khi liệt kê** — câu hỏi "các trường hợp / hành vi nào" → rà soát toàn bộ ngữ cảnh.
+13. **Giải thích dễ hiểu** — luôn mô tả hành vi bằng ngôn ngữ tự nhiên trước khi trích `[Điều/Khoản]`.
+14. **Tư duy lập luận phân định lỗi (v6.1, MỚI)** — khi user hỏi "lỗi do ai / ai có lỗi" trong va chạm:
+    - **Override Quy tắc 4** (cấm từ chối) — kết luận lỗi luôn phải được suy ra, không có văn bản nào ghi sẵn.
+    - **Quy trình 4 bước:** (1) Liệt kê hành vi từng bên; (2) Đối chiếu mỗi hành vi vào chunk vi phạm trong ngữ cảnh; (3) Kết luận `lỗi đơn / lỗi hỗn hợp / không đủ cơ sở`; (4) Lưu ý cuối: "tỷ lệ % do CSGT xác định theo TT 72/2024/TT-BCA".
+    - **Quy tắc cứng:** mỗi hành vi phải có trích dẫn từ ngữ cảnh; chỉ phần KẾT LUẬN ở Bước 3 mới được suy ra.
+    - **Chi tiết:** xem §8.6.
 
 ### 7.5 Output structured với Pydantic
 
@@ -876,6 +886,152 @@ def analyzer_node(state):
     }
 ```
 
+### 8.6 Bản nâng cấp Legal Reasoning v6.1 cho câu hỏi phân định lỗi
+
+#### 8.6.1 Bug ghi nhận từ thực tế (24/04/2026)
+
+Khi user hỏi các câu **phân định lỗi trong va chạm** — ví dụ:
+
+> *"Tôi chạy ngược chiều va chạm với người chạy quá tốc độ thì lỗi do ai?"*
+> *"Tôi đi đúng làn, một người từ làn ngược hướng sang đường không xi nhan thì tôi va chạm phải họ, lỗi do ai?"*
+
+…hệ thống **bỏ qua RAG** và rơi xuống nhánh Web Search Fallback (Tavily) → trả về câu **chờ phê duyệt**, đôi khi bị reviewer reject. UX trông như "hệ thống không biết câu này".
+
+```mermaid
+flowchart LR
+    Q["User: lỗi do ai?"] --> A["analyzer<br/>category = ?"]
+    A -- web_legal_search --> W["web_search<br/>Tavily"]
+    A -- legal_rag --> R["retriever"] --> G["generator"]
+    G -- refused=True --> W
+    W --> WF["⚠️ chờ phê duyệt"]
+    style W fill:#fde9d9
+    style WF fill:#fde9d9
+```
+
+**Truy ngược nguyên nhân (root-cause analysis):** không có một mà **hai điểm đứt gãy**.
+
+| # | Tầng | Triệu chứng | Nguyên nhân |
+|---|---|---|---|
+| 1 | **Analyzer** | Phân loại nhầm `web_legal_search` | Prompt không có few-shot cho dạng câu hỏi mô tả tình huống tai nạn — LLM cho rằng "đây không phải hỏi về luật". `expanded_query` (nếu được giữ) cũng chỉ là 1 cụm chung chung, không tách hành vi. |
+| 2 | **Generator** | Trả `REFUSAL_PHRASE` → `legal_fallback_router` route web | Quy tắc 4 ("không suy đoán, nếu không thấy thông tin phải trả lời Không có") đè lên Quy tắc 11. Văn bản pháp luật KHÔNG có chunk nào ghi sẵn "ai có lỗi" → LLM coi là thiếu thông tin → từ chối. |
+
+#### 8.6.2 Bản chất pháp lý của câu hỏi "lỗi do ai"
+
+> **Insight quan trọng:** không có văn bản quy phạm pháp luật nào ghi sẵn công
+> thức chia lỗi cho từng cặp hành vi. Lỗi luôn được **suy ra** bằng cách:
+> (a) trích xuất hành vi của từng bên, (b) chiếu vào quy định cấm/phạt trong
+> Luật 36 + NĐ 168, (c) nhân-quả với hậu quả thực tế. Bước (c) thuộc thẩm quyền
+> CSGT theo Thông tư 72/2024/TT-BCA. Hệ thống RAG **làm được (a) và (b)** một
+> cách đáng tin cậy, **chỉ cần được "cho phép" suy luận**.
+
+#### 8.6.3 Patch A — Analyzer few-shot cho phân định lỗi
+
+**File:** [source/agent/nodes.py:56-122](../source/agent/nodes.py#L56-L122) — thay
+toàn bộ `ANALYZER_SYSTEM_PROMPT` (4 509 ký tự).
+
+**Bốn thay đổi cốt lõi:**
+
+1. **Nguyên tắc vàng:** chèn rule cứng — "Bất kỳ câu hỏi nào CHỨA tình huống
+   thực tế trên đường VN (va chạm, đụng xe, tai nạn, ai sai, lỗi do ai…) ĐỀU
+   thuộc `legal_rag`, KHÔNG bao giờ là `web_legal_search`".
+2. **Phân rã expanded_query đa-hành-vi:** nếu câu hỏi chứa nhiều hành vi, tách
+   thành danh sách cụm tra cứu nối bằng `" | "` — ví dụ:
+   ```
+   "mức phạt đi ngược chiều xe ô tô xe máy đường một chiều Nghị định 168/2024
+    | mức phạt chạy quá tốc độ vượt quá tốc độ quy định Nghị định 168/2024
+    | phân định lỗi va chạm trách nhiệm hỗn hợp Luật 36/2024 quy tắc giao thông"
+   ```
+3. **Bốn few-shot examples** — gồm 2 câu thực tế trong bug report + 1 câu mức
+   phạt thuần (đối chứng dạng đơn lẻ) + 1 câu out-of-scope (đối chứng).
+4. **Giữ schema cũ:** `expanded_query: str` — không thay đổi `AnalyzerOutput`,
+   không động đến downstream pipeline. Các cụm sub-query nối bằng `" | "` ngấm
+   vào BM25 (multi-keyword) lẫn dense (E5 max_seq=512 đủ chứa).
+
+**Lý do giữ nguyên schema (không đổi sang `list[str]`):** đổi schema kéo theo
+sửa `legal_rag_node` (loop từng query, gộp + dedup chunk). Cải thiện recall ước
+~5–10% nhưng tăng độ phức tạp; deferred sang v6.2.
+
+#### 8.6.4 Patch B — Quy tắc 14 cho Generator (Legal Reasoning)
+
+**File:** [source/rag_core/generator.py:84-156](../source/rag_core/generator.py#L84-L156)
+— chèn khối Quy tắc 14 (~3 600 ký tự) sau Quy tắc 13. Đồng thời sửa typo dòng 33
+("3. 6." → "6.").
+
+**Cấu trúc Quy tắc 14:**
+
+```mermaid
+flowchart TD
+    Q["Câu hỏi: lỗi do ai?"] --> R0["Override Quy tắc 4<br/>(cấm từ chối)"]
+    R0 --> S1["Bước 1<br/>Liệt kê hành vi từng bên<br/>(trích nguyên văn)"]
+    S1 --> S2["Bước 2<br/>Đối chiếu mỗi hành vi<br/>vào chunk vi phạm"]
+    S2 --> S3{"Bước 3<br/>Kết luận"}
+    S3 -- chỉ A --> A["Lỗi thuộc Bên A"]
+    S3 -- chỉ B --> B["Lỗi thuộc Bên B"]
+    S3 -- cả hai --> M["LỖI HỖN HỢP<br/>tỷ lệ % do CSGT theo TT 72"]
+    S3 -- không bên nào --> N["Cần điều tra hiện trường"]
+    A --> S4["Bước 4<br/>Lưu ý cuối<br/>(thẩm quyền CSGT theo TT 72)"]
+    B --> S4
+    M --> S4
+    N --> S4
+```
+
+**Quy tắc cứng giữ tính grounded:**
+
+- MỖI hành vi vi phạm phải có trích dẫn `[Điều, Khoản — văn bản]` từ ngữ cảnh.
+  Chỉ phần KẾT LUẬN ở Bước 3 mới được "suy ra".
+- Nếu ngữ cảnh KHÔNG có chunk nào về một hành vi → ghi rõ "không tìm thấy quy
+  định cụ thể trong tài liệu" cho hành vi đó, KHÔNG bịa Điều/Khoản.
+- Chỉ override Quy tắc 4 cho dạng câu hỏi "lỗi do ai / ai có lỗi". Các câu hỏi
+  khác vẫn áp dụng Quy tắc 4 nguyên gốc.
+
+**Ví dụ output mẫu (theo format Quy tắc 6 — Markdown phân cấp):**
+
+```markdown
+### Phân tích lỗi va chạm
+
+**Bước 1 – Hành vi của hai bên:**
+- Bên A (bạn): **đi ngược chiều**.
+- Bên B: **chạy quá tốc độ quy định**.
+
+**Bước 2 – Đối chiếu quy định:**
+- Đi ngược chiều trên đường một chiều bị phạt **4.000.000 – 6.000.000 đồng**
+  và **trừ 02 điểm** GPLX [Điều 6, Khoản 5, Điểm c — NĐ 168/2024/NĐ-CP].
+- Chạy quá tốc độ quy định bị phạt theo các mức tương ứng tại
+  [Điều 6, Khoản … — NĐ 168/2024/NĐ-CP].
+
+**Bước 3 – Kết luận:** **Lỗi hỗn hợp** — cả hai bên đều vi phạm. Tỷ lệ lỗi cụ
+thể do CSGT xác định.
+
+**Lưu ý:** Đây là phân tích pháp lý dựa trên hành vi. Việc kết luận lỗi chính
+thức và tỷ lệ % do CSGT thực hiện theo quy trình tại Thông tư 72/2024/TT-BCA.
+```
+
+#### 8.6.5 Vai trò bổ trợ của Thông tư 72/2024/TT-BCA
+
+TT 72 (113 chunk, thêm vào KB ngày 25/04/2026) **không quy định ai có lỗi** —
+nhưng nó cung cấp:
+
+- **Thẩm quyền:** CSGT là cơ quan duy nhất có thẩm quyền xác định lỗi và tỷ lệ %.
+- **Quy trình:** tiếp nhận tin báo (Đ4) → khám nghiệm hiện trường (Đ8, Đ9) → giải
+  quyết (Đ6, Đ18).
+- **Vai trò trong câu trả lời:** dùng cho dòng "Lưu ý" ở Bước 4, định hướng user
+  liên hệ đúng cơ quan thay vì kỳ vọng hệ thống đưa kết luận pháp lý cuối cùng.
+
+#### 8.6.6 Đánh giá kỳ vọng (deferred — chưa đo)
+
+Sau patch A+B, kỳ vọng metric thay đổi:
+
+| Metric | Trước | Kỳ vọng sau | Lý do |
+|---|---:|---:|---|
+| Refusal rate (category accident-fault) | ~80–90% | <20% | Quy tắc 14 override Quy tắc 4 |
+| Web-search fallback rate | ~80% | <15% | Analyzer không còn route nhầm |
+| Cit-R cho câu accident-fault | n/a (trả refusal) | ≥0.40 | Mỗi hành vi cần ≥1 trích dẫn |
+| Latency (per-query) | +0–5% | +5–10% | Output dài hơn (4 bước) |
+
+**Cần làm để xác nhận:** mở rộng `eval_qa.jsonl` (hiện 25 câu, không có category
+"accident-fault") thêm 5–8 câu phân định lỗi với gold citations từ Luật 36 + NĐ
+168 → chạy lại RQ1 + RQ7. Deferred sang v6.2.
+
 ---
 
 ## 9. Deployment
@@ -897,14 +1053,26 @@ Endpoints:
 
 **Concurrency:** 1 uvicorn worker mỗi CPU core; Qdrant client thread-safe → shared; SentenceTransformer load 1 lần khi startup.
 
-### 9.2 Streamlit UI
+### 9.2 Web UI (Next.js 14)
 
-**File:** [app/streamlit_app.py](../app/streamlit_app.py)
+**Folder:** [app/nextjs-app/](../app/nextjs-app/)
 
-- `st.chat_message` cho mỗi turn.
-- **Khi `category == "web_search"`** → hiển thị list snippet với `st.checkbox` + nút "Tiếp tục" → gọi `/chat/resume`.
-- **Khi `sources` ≠ rỗng** → collapsible panel show mỗi citation + preview content chunk.
-- **Session state:** `st.session_state.session_id = uuid4()` tạo lần đầu mỗi tab.
+Stack: Next.js 14 App Router · TypeScript · Tailwind · Zustand · Prisma · NextAuth.
+
+- **`src/app/api/chat/route.ts`** — Edge route, nhận `{messages, thread_id}` từ client, chuyển thành `{query, thread_id}` rồi forward sang FastAPI `POST /chat`. Map `sources[]` của backend (Điều/Khoản/Điểm + tên văn bản) sang `citations[]` của UI; trả SSE token-by-token để giả lập streaming.
+- **HITL** — nếu backend trả `status="pending_web_review"`, route tự gọi `POST /resume/{thread_id}` với `approved=true` (V1 auto-approve; V2 sẽ surface nút Approve/Reject).
+- **Conversation persistence** — Zustand store giữ lịch sử ở `localStorage`; mỗi `conversation.id` được dùng làm `thread_id` để giữ liền mạch checkpoint phía LangGraph.
+- **Citation popover** — click `[3]` trong câu trả lời → mở card hiển thị `title · org · date · type · excerpt`.
+- **Tính năng UI khác** — search/pin/delete history, copy + xuất PDF (`window.print`), theme tokens (navy/teal/dark), empty-state suggested prompts.
+
+**Chạy local:**
+```bash
+cd traffic_rag/app/nextjs-app
+npm install
+echo "BACKEND_URL=http://localhost:8000" > .env.local
+npm run dev   # → http://localhost:3000
+```
+(FastAPI ở `:8000` cần chạy song song.)
 
 ### 9.3 Docker Compose
 
@@ -929,10 +1097,12 @@ services:
     ports: ["8000:8000"]
 
   ui:
-    build: ./traffic_rag
-    command: streamlit run app/streamlit_app.py
+    build:
+      context: ./traffic_rag/app/nextjs-app
+    environment:
+      - BACKEND_URL=http://api:8000
     depends_on: [api]
-    ports: ["8501:8501"]
+    ports: ["3000:3000"]
 ```
 
 ### 9.4 Observability
@@ -1273,7 +1443,40 @@ Từ 500 run thực trong project `Traffic-RAG-Evaluation`:
 
 ## 13. Phụ lục
 
-### 13.1 Changelog v5.5 → v6.0 (25/04/2026)
+### 13.1 Changelog v5.5 → v6.0 → v6.1
+
+#### v6.1 (25/04/2026) — Legal Reasoning upgrade
+
+**Bối cảnh:** Bug ghi nhận từ thực tế — câu hỏi phân định lỗi va chạm rơi xuống
+web fallback thay vì RAG. Truy ngược: 2 điểm đứt gãy (Analyzer route nhầm +
+Generator từ chối). Xem chi tiết §8.6.
+
+**Thay đổi:**
+
+1. **Thêm Thông tư 72/2024/TT-BCA** vào KB — 113 chunk (29 Điều), corpus
+   2 705 → **2 818 chunk**. Re-index `traffic_law_v3_e5` (3/3 validation pass).
+   Vai trò: cung cấp thẩm quyền + quy trình điều tra TNGT cho câu trả lời (§8.6.5).
+2. **Patch A: `ANALYZER_SYSTEM_PROMPT`** ([nodes.py:56-122](../source/agent/nodes.py#L56-L122))
+   — thêm "Nguyên tắc vàng" (tình huống tai nạn VN luôn là `legal_rag`),
+   chiến lược phân rã `expanded_query` đa-hành-vi bằng `" | "`, 4 few-shot
+   examples (gồm 2 câu trong bug report).
+3. **Patch B: Quy tắc 14 cho Generator** ([generator.py:84-156](../source/rag_core/generator.py#L84-L156))
+   — Quy trình 4 bước "Tư duy lập luận phân định lỗi" (liệt kê hành vi → đối
+   chiếu chunk → kết luận đơn/hỗn hợp/không đủ → lưu ý CSGT theo TT 72).
+   Override Quy tắc 4 (cấm từ chối) cho dạng câu hỏi này. Sửa kèm typo "3. 6.".
+4. **Tài liệu cập nhật:** §5.5 (corpus stats), §7.4 (12 → **14 rules**), §8.6
+   (toàn bộ chương mới), §13.1 (changelog).
+
+**Không breaking:**
+
+- Schema `AnalyzerOutput.expanded_query: str` giữ nguyên — không động pipeline.
+- `make_analyzer_node` / `LegalAnswerGenerator.generate` API không đổi.
+- Collection name không đổi — chỉ cần re-index một lần.
+
+**Đo lường (deferred):** mở rộng `eval_qa.jsonl` thêm 5–8 câu accident-fault và
+chạy lại RQ1 + RQ7 ở v6.2.
+
+#### v6.0 (25/04/2026) — Embedding migration & RQ9
 
 **Thay đổi lớn:**
 
@@ -1295,8 +1498,8 @@ Từ 500 run thực trong project `Traffic-RAG-Evaluation`:
 traffic_rag/
 ├── api/                        # FastAPI backend
 │   └── main.py
-├── app/                        # Streamlit frontend
-│   └── streamlit_app.py
+├── app/                        # Frontend
+│   └── nextjs-app/                  # Next.js 14 (App Router + Tailwind + Zustand)
 ├── source/
 │   ├── ingestion/              # .docx/.md → JSON → chunks
 │   │   ├── docx_to_markdown.py
@@ -1344,8 +1547,11 @@ rank-bm25==0.2.*
 pyvi==0.1.*
 tavily-python==0.3.*
 fastapi==0.110.*
-streamlit==1.32.*
 pydantic==2.6.*
+# Frontend (Node)
+next==14.2.*
+react==18.3.*
+zustand==5.0.*
 python-docx==1.1.*
 langsmith==0.1.*
 ```

@@ -30,7 +30,7 @@ QUY TẮC BẮT BUỘC:
 3. Mỗi khẳng định phải được trích dẫn theo định dạng: [Điều X, Khoản Y — {tên văn bản} ({doc_id})]. Nếu không có Khoản, bỏ phần "Khoản Y".
 4. Nếu NGỮ CẢNH không chứa đủ thông tin để trả lời, trả lời đúng một câu: "{REFUSAL}"
 5. Không thêm lời dẫn, không mở đầu bằng "Dựa trên tài liệu...", đi thẳng vào câu trả lời.
-3. 6. ĐỊNH DẠNG TRÌNH BÀY MARKDOWN — BẮT BUỘC TUÂN THỦ TRỰC QUAN:
+6. ĐỊNH DẠNG TRÌNH BÀY MARKDOWN — BẮT BUỘC TUÂN THỦ TRỰC QUAN:
    - Sử dụng thẻ Heading 3 (`###`) cho các mục chính hoặc tên đối tượng/hành vi chính để cỡ chữ to và rõ ràng hơn.
    - BẮT BUỘC **in đậm** các con số quan trọng: Mức phạt tiền, Số điểm GPLX bị trừ, Thời gian bị tước quyền sử dụng.
    - MỖI hành vi / mỗi ý phải nằm trên DÒNG RIÊNG BIỆT (dùng danh sách bullet `- `).
@@ -81,6 +81,77 @@ QUY TẮC PHÂN BIỆT NGỮ CẢNH:
     - Nếu trong NGỮ CẢNH có chunk chứa NỘI DUNG CHI TIẾT của hành vi → PHẢI mô tả hành vi đó bằng ngôn ngữ rõ ràng.
     - Nếu chunk chỉ chứa tham chiếu chéo (ví dụ: "hành vi quy định tại điểm X khoản Y Điều Z") và NGỮ CẢNH KHÔNG có nội dung chi tiết của Điều Z đó → vẫn phải ghi rõ: "Hành vi quy định tại [Điều Z, Khoản Y, Điểm X] — (chi tiết xem tại Điều Z)" thay vì chỉ ghi mã số.
     - Ưu tiên tuyệt đối: MÔ TẢ HÀNH VI BẰNG NGÔN NGỮ TỰ NHIÊN trước, rồi mới trích dẫn [Điều/Khoản] ở cuối.
+
+14. TƯ DUY LẬP LUẬN PHÂN ĐỊNH LỖI – ÁP DỤNG KHI CÂU HỎI HỎI "AI CÓ LỖI / LỖI DO AI
+    / TRÁCH NHIỆM CỦA AI" TRONG VA CHẠM – TAI NẠN GIAO THÔNG.
+
+    ⚠️ KHI GẶP DẠNG CÂU HỎI NÀY, KHÔNG ÁP DỤNG QUY TẮC 4 (TỪ CHỐI). Lý do: văn
+    bản pháp luật KHÔNG bao giờ ghi sẵn "trong va chạm A và B thì A có lỗi" – kết
+    luận lỗi luôn phải được SUY RA bằng cách chiếu hành vi của từng bên vào quy
+    định cấm. Đây không phải bịa đặt mà là LẬP LUẬN PHÁP LÝ – được phép.
+
+    QUY TRÌNH 4 BƯỚC BẮT BUỘC (mỗi bước phải có trong câu trả lời):
+
+    Bước 1 — Liệt kê HÀNH VI của từng bên (trích nguyên văn từ câu hỏi).
+       VD: "Bên A: đi ngược chiều. Bên B: chạy quá tốc độ."
+
+    Bước 2 — Với MỖI hành vi, tìm trong NGỮ CẢNH chunk quy định cấm hoặc xử phạt
+       hành vi đó. Nếu tìm được → ghi nhận: "Hành vi X bị cấm/bị phạt theo
+       [Điều ?, Khoản ? — văn bản]". Nếu không tìm được hành vi nào trong ngữ
+       cảnh thì mới được dùng câu từ chối ở Quy tắc 4.
+
+    Bước 3 — KẾT LUẬN PHÂN LỖI dựa trên Bước 2:
+       - Chỉ Bên A vi phạm  → "Lỗi thuộc về Bên A".
+       - Chỉ Bên B vi phạm  → "Lỗi thuộc về Bên B".
+       - Cả hai cùng vi phạm → "LỖI HỖN HỢP – cả hai bên đều có phần lỗi.
+         Tỷ lệ cụ thể do cơ quan điều tra (CSGT) xác định theo Thông tư
+         72/2024/TT-BCA và mức độ nhân-quả với hậu quả thực tế".
+       - Không bên nào vi phạm theo ngữ cảnh → nói rõ "Theo các quy định trong
+         tài liệu, không bên nào có hành vi vi phạm rõ ràng. Cần điều tra hiện
+         trường để xác định lỗi".
+
+    Bước 4 — Ghi 1 dòng LƯU Ý cuối: "Đây là phân tích pháp lý dựa trên hành vi.
+       Việc xác định lỗi chính thức (và tỷ lệ % lỗi) do CSGT thực hiện theo
+       Thông tư 72/2024/TT-BCA về quy trình điều tra giải quyết TNGT đường bộ."
+
+    VÍ DỤ MẪU – câu hỏi: "Tôi chạy ngược chiều va chạm với người chạy quá tốc độ
+    thì lỗi do ai?"
+    Ngữ cảnh chứa: NĐ 168/2024 Điều 6 (phạt đi ngược chiều ô tô), Điều 6
+    (phạt chạy quá tốc độ), Luật 36/2024 Điều 11 (đi đúng chiều đường).
+
+    ✅ Câu trả lời ĐÚNG (Markdown gọn, theo Quy tắc 6):
+
+    ### Phân tích lỗi va chạm
+
+    **Bước 1 – Hành vi của hai bên:**
+    - Bên A (bạn): **đi ngược chiều**.
+    - Bên B: **chạy quá tốc độ quy định**.
+
+    **Bước 2 – Đối chiếu quy định:**
+    - Đi ngược chiều trên đường một chiều bị phạt **4.000.000 – 6.000.000 đồng**
+      và **trừ 02 điểm** GPLX [Điều 6, Khoản 5, Điểm c — NĐ 168/2024/NĐ-CP].
+    - Vi phạm quy tắc đi đúng chiều đường, đi đúng phần đường, làn đường
+      [Điều 11 — Luật 36/2024/QH15].
+    - Chạy quá tốc độ quy định bị phạt theo các mức tương ứng tại
+      [Điều 6, Khoản ... — NĐ 168/2024/NĐ-CP].
+
+    **Bước 3 – Kết luận:** **Lỗi hỗn hợp** – cả hai bên đều vi phạm. Bên A vi
+    phạm quy tắc đi ngược chiều (lỗi nghiêm trọng, là nguyên nhân trực tiếp gây
+    nguy cơ va chạm). Bên B vi phạm quy định tốc độ (yếu tố làm tăng hậu quả).
+    Tỷ lệ lỗi cụ thể do CSGT xác định.
+
+    **Lưu ý:** Đây là phân tích pháp lý dựa trên hành vi. Việc kết luận lỗi
+    chính thức và tỷ lệ % do CSGT thực hiện theo quy trình tại Thông tư
+    72/2024/TT-BCA.
+
+    QUY TẮC CỨNG:
+    - MỖI hành vi vi phạm phải có trích dẫn [Điều, Khoản — văn bản] từ ngữ cảnh.
+      Chỉ phần KẾT LUẬN ở Bước 3 mới được "suy ra".
+    - Nếu ngữ cảnh không có chunk nào về hành vi đã liệt kê ở Bước 1 → ghi rõ
+      "không tìm thấy quy định cụ thể trong tài liệu" cho hành vi đó, KHÔNG
+      bịa Điều/Khoản.
+    - Tuyệt đối không trả về câu từ chối ở Quy tắc 4 cho dạng câu hỏi này khi
+      ngữ cảnh có ÍT NHẤT 1 chunk khớp với 1 hành vi.
 """.replace("{REFUSAL}", REFUSAL_PHRASE)
 
 

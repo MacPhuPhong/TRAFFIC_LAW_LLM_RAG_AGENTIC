@@ -1,9 +1,9 @@
 # BÁO CÁO KỸ THUẬT HỆ THỐNG
-## Traffic-Law RAG — Trợ lý Pháp lý Giao thông Việt Nam (v6.0)
+## Traffic-Law RAG — Trợ lý Pháp lý Giao thông Việt Nam (v6.2)
 
-**Phiên bản:** 6.0 · **Ngày:** 25/04/2026
+**Phiên bản:** 6.2 · **Ngày:** 26/04/2026
 **Tác giả:** Phong Mac · **Đồ án Tốt nghiệp**
-**Repo:** `traffic_rag/` · **Stack:** Python 3.11 · LangGraph · Qdrant · Gemini · FastAPI · Streamlit · Docker
+**Repo:** `traffic_rag/` · **Stack:** Python 3.11 · LangGraph · Qdrant · Gemini · FastAPI · Next.js 14 · Docker
 
 > Báo cáo này là tài liệu kỹ thuật **duy nhất, đầy đủ** cho toàn bộ hệ thống. Mỗi thành phần (ingestion, chunking, embedding, indexing, retrieval, generation, orchestration, deployment) đều được trình bày theo cấu trúc **Research → Quyết định → Kiến trúc chi tiết**: trước tiên đưa ra kết quả so sánh định lượng từ các ablation `research/` (RQ1-RQ9), sau đó giải thích tại sao hệ thống chọn phương án đang triển khai, cuối cùng mô tả đầy đủ mã nguồn / công thức / cấu hình thực tế.
 
@@ -799,74 +799,157 @@ class AgentState(TypedDict):
 
 **File:** [source/agent/graph.py](../source/agent/graph.py)
 
+State machine **đúng theo source code** (verify ngày 26/04/2026):
+
 ```mermaid
 stateDiagram-v2
     [*] --> analyzer : START
-    analyzer --> route_by_category : AnalyzerOutput\n(category, standalone_q, expanded_q)
+    analyzer --> route_by_category : AnalyzerOutput\n(category, standalone_query, expanded_query)
 
     state route_by_category <<choice>>
-    route_by_category --> legal_rag : category = "legal"
-    route_by_category --> chit_chat : category = "chit_chat"
-    route_by_category --> web_search : category = "web_search"
-    route_by_category --> out_of_scope : category = "out_of_scope"
+    route_by_category --> legal_rag        : category = "legal_rag"
+    route_by_category --> chit_chat        : category = "chit_chat"
+    route_by_category --> web_search       : category = "web_legal_search"  (đi thẳng)
+    route_by_category --> out_of_scope     : category = "out_of_scope"
 
-    legal_rag --> legal_fallback_router : chunks = 0
-    legal_fallback_router --> legal_rag : retry with raw query
-    legal_rag --> [*] : answer + sources
+    legal_rag --> legal_fallback_router    : sau retrieval + generate
+    state legal_fallback_router <<choice>>
+    legal_fallback_router --> [*]          : refused = False  (trusted answer)
+    legal_fallback_router --> web_search   : refused = True\nhoặc chunks = 0
+    legal_fallback_router --> [*]          : error ≠ None  (infra fail, không web fallback)
+
+    web_search --> web_finalize            : draft_answer + sources sẵn sàng
+    note right of web_finalize
+      ⚠️ interrupt_before = ["web_finalize"]
+      Graph PAUSE tại đây.
+      FastAPI /chat trả {status:"pending_web_review"}.
+      Admin gọi /resume/{thread_id}
+      → graph chạy tiếp web_finalize
+      → answer = draft_answer (hoặc override)
+    end note
+    web_finalize --> [*]
 
     chit_chat --> [*]
     out_of_scope --> [*]
-
-    web_search --> web_finalize : snippets ready
-    note right of web_finalize : HITL interrupt_before\n— UI hiển thị snippet,\nđợi user duyệt trước\nkhi tổng hợp answer
-    web_finalize --> [*]
 ```
+
+**Hai con đường tới `web_search`** (user thường nhầm là một):
+
+| Đường | Khi nào | Phân biệt phía UI |
+|---|---|---|
+| **Trực tiếp** `analyzer → web_search` | Analyzer phân loại `category = "web_legal_search"` (luật nước ngoài, tin cực mới) | `category` trong response giữ `"web_legal_search"` |
+| **Fallback** `analyzer → legal_rag → web_search` | Generator trả `refused = True` HOẶC retriever trả 0 chunk | `category` vẫn là `"legal_rag"` — UI biết "đã thử RAG nhưng phải tra web" |
+
+`web_search_node` cố ý **không ghi đè `category`** ([nodes.py:506-513](../source/agent/nodes.py#L506-L513)) để UI có thể phân biệt.
 
 **Compile với HITL:**
 
 ```python
-graph = workflow.compile(
-    checkpointer=MemorySaver(),
-    interrupt_before=["web_finalize"],
-)
+# graph.py:113-117
+compile_kwargs = {"checkpointer": checkpointer}
+if enable_hitl_interrupt:
+    compile_kwargs["interrupt_before"] = ["web_finalize"]
+return workflow.compile(**compile_kwargs)
 ```
+
+Checkpointer mặc định là `SqliteSaver` (sync) ở `traffic_rag/checkpoints/graph.db`, FastAPI dùng `AsyncSqliteSaver` để pause/resume thread theo `thread_id`.
 
 ### 8.4 Các node
 
-#### 8.4.1 `analyzer`
+#### 8.4.1 `analyzer` — gộp 3 việc trong 1 LLM call
 
-LLM call với structured output:
+**File:** [source/agent/nodes.py:171-216](../source/agent/nodes.py#L171-L216)
+
+Tối ưu chống timeout: thay vì 3 LLM call (contextualize → router → expansion), dùng **1 structured output** trả 3 trường:
 
 ```python
 class AnalyzerOutput(BaseModel):
-    category: Literal["legal","chit_chat","web_search","out_of_scope"]
-    standalone_query: str
-    expanded_query: str
+    category: Literal["legal_rag","chit_chat","web_legal_search","out_of_scope"]
+    standalone_query: str        # giải tham chiếu từ history
+    expanded_query: str          # cụm tra cứu đa-hành-vi nối bằng " | "
 ```
 
-Prompt gồm: definition 4 category + 3 ví dụ mỗi loại + history-aware rule ("nếu user reference message trước, viết lại thành câu đầy đủ").
+Prompt gồm 4 phần (xem [nodes.py:56-137](../source/agent/nodes.py#L56-L137)):
 
-#### 8.4.2 `legal_rag`
+1. **Định nghĩa 4 category** — chú trọng nguyên tắc vàng "tình huống tai nạn VN luôn là `legal_rag`".
+2. **Quy tắc chuẩn hoá** standalone_query — giải tham chiếu ("xe đó" → "xe ô tô con").
+3. **Chiến lược mở rộng expanded_query** — chia theo dạng câu (mức phạt / khi nào / thủ tục), riêng câu tai nạn phân rã đa-hành-vi nối bằng `" | "`.
+4. **4 few-shot examples** — gồm 2 câu trong bug report v6.1 + 1 câu mức phạt thuần + 1 câu out-of-scope.
 
-Call `TrafficHybridRetriever.get_relevant_chunks(q, top_k=10)` rồi `LegalAnswerGenerator.generate(q, chunks)`. Nếu retriever trả 0 chunk → gọi **legal_fallback_router** (thử với câu gốc chưa rewrite).
+**History-aware:** prompt nhận tối đa `CONTEXTUALIZE_HISTORY_TURNS=6` lượt gần nhất, kèm danh sách citation đã trích để LLM resolve "Điều số X" cross-turn.
 
-#### 8.4.3 `chit_chat`
+**Fallback an toàn:** nếu LLM trả về None hoặc raise exception → return `category="legal_rag"`, `expanded_query=raw` (giữ flow chính, không drop request).
 
-Gemini direct call với prompt "Bạn là trợ lý thân thiện, trả lời ngắn gọn không liên quan pháp luật".
+#### 8.4.2 `legal_rag` — retrieval + generation + 2 pass kết nối
 
-#### 8.4.4 `web_search`
+**File:** [source/agent/nodes.py:306-431](../source/agent/nodes.py#L306-L431)
 
-Tavily `search(query, max_results=5)` → snippet list. Chuyển sang `web_finalize` (có HITL gate).
+Flow đầy đủ (≠ "chỉ retrieve + generate"):
 
-#### 8.4.5 `web_finalize` (HITL)
+1. **Chọn `top_k` động** — regex `BROAD_QUERY_PATTERNS` (19 cụm "khi nào / các trường hợp / liệt kê / hạng nào…") → nếu match thì `top_k=25`, ngược lại `top_k=15` ([nodes.py:229-252](../source/agent/nodes.py#L229-L252)). Lý do: câu liệt kê cần window rộng hơn câu pinpoint.
+2. **Reference-pass** — regex bắt cụm `điểm h khoản 14 Điều 32` trong (raw_query, query, expanded_query). Mỗi reference được tra **cấu trúc** qua `retriever.get_chunks_by_location(...)` thay vì similarity, vì retrieval ngữ nghĩa hay chôn vùi pinpoint reference. `doc_id` mặc định nếu user không nêu = `168/2024/NĐ-CP` (corpus dominant).
+3. **Generate** với `LegalAnswerGenerator.generate(query, chunks)` (trả structured output P2 — xem §7.4).
+4. **Cross-reference resolution pass** ([nodes.py:355-397](../source/agent/nodes.py#L355-L397)) — chỉ scan **top-5 primary chunks** để bắt cụm xref `"hành vi quy định tại điểm a khoản 4 Điều 13"`, kéo thêm chunk Điều/Khoản được dẫn (cap 30 để tránh bloat).
+5. **Set `refused`** từ generator: nếu generator trả "Không đủ thông tin trong tài liệu" → `refused=True` → router fallback web.
 
-**Interrupt point.** UI hiển thị snippet + nút "Chấp nhận / Bỏ qua". Khi user confirm, resume graph với các snippet đã được tick → gen câu trả lời dựa trên snippet.
+**3 nhánh return state khác nhau:**
 
-Lý do HITL ở đây: **web không đáng tin cậy cho pháp luật** — buộc người dùng duyệt nguồn trước khi dùng.
+| Trường hợp | `chunks` | `answer` | `refused` | `error` | Hướng đi tiếp |
+|---|---|---|---|---|---|
+| Retriever exception | `[]` | `""` | `False` | `retriever_error: ...` | `legal_fallback_router → END` (không web fallback cho infra error) |
+| Retriever 0 chunk | `[]` | `""` | `True` | — | `legal_fallback_router → web_search` |
+| Generator refused | có | `"Không đủ..."` | `True` | — | `legal_fallback_router → web_search` |
+| Generator OK | có | có | `False` | — | `legal_fallback_router → END` |
 
-#### 8.4.6 `out_of_scope`
+#### 8.4.3 `legal_fallback_router` — edge condition
 
-Template refusal cố định: "Câu hỏi nằm ngoài phạm vi hỗ trợ của trợ lý pháp luật giao thông. Vui lòng đặt câu hỏi về NĐ, TT, Luật giao thông đường bộ."
+**File:** [source/agent/nodes.py:434-447](../source/agent/nodes.py#L434-L447)
+
+```python
+def legal_fallback_router(state):
+    if state.get("error"):                           # infra error
+        return "end"                                  # KHÔNG fallback web
+    if state.get("refused") or not state.get("chunks"):
+        return "web_search"
+    return "end"
+```
+
+Quyết định thiết kế: **error infra → END** thay vì fallback. Nếu retriever timeout, fallback web sẽ che đi nguyên nhân thật và trả về câu trả lời sai loại.
+
+#### 8.4.4 `chit_chat`
+
+Direct LLM call với `CHIT_CHAT_SYSTEM_PROMPT`: 1-2 câu thân mật, **cấm trích Điều/Khoản** ở nhánh này. Nếu LLM fail → fallback template "Xin chào! Tôi là Trợ lý Luật Giao thông…".
+
+#### 8.4.5 `web_search` — tạo DRAFT, không phải answer cuối
+
+**File:** [source/agent/nodes.py:505-590](../source/agent/nodes.py#L505-L590)
+
+Khác biệt **rất quan trọng**: ghi `draft_answer` (không phải `answer`) và set `requires_approval=True`.
+
+Flow:
+
+1. `_build_web_search_query(state)` — anchor query bằng prefix `"Luật giao thông Việt Nam: "` để Tavily không lạc đề (đặc biệt với follow-up mơ hồ kiểu "đã lỡ bỏ chạy rồi").
+2. `tavily_tool.search(...)` trả tối đa 5 result. Mỗi result `{title, url, content}`.
+3. Format `web_context` rồi gọi LLM với `WEB_SEARCH_SYSTEM_PROMPT` để tổng hợp `draft`. Prompt **bắt buộc** chèn dòng `"⚠️ Lưu ý: Thông tin tra cứu từ Internet mở, hãy cẩn trọng."` ở đầu.
+4. Trả `{draft_answer, sources, web_results, warning_prefix, requires_approval=True}`.
+
+**Cố ý không ghi đè `category`** để UI phân biệt 2 đường vào (web_legal_search trực tiếp vs fallback từ legal_rag).
+
+#### 8.4.6 `web_finalize` — HITL gate
+
+**File:** [source/agent/nodes.py:593-605](../source/agent/nodes.py#L593-L605)
+
+Graph compile với `interrupt_before=["web_finalize"]` → khi tới đây, LangGraph **dừng** và trả về cho FastAPI. FastAPI thấy `next_nodes` chứa `"web_finalize"` → trả `{status: "pending_web_review", thread_id}`.
+
+Khi admin gọi `/resume/{thread_id}` (xem §9.1):
+- Reject: graph cập nhật state với `answer=REJECTED_MESSAGE` và **không chạy** `web_finalize`.
+- Approve: graph chạy `web_finalize` → copy `draft_answer` → `answer`, clear `requires_approval`.
+
+Lý do HITL ở đây (không ở `web_search`): **draft đã sẵn sàng, admin chỉ cần đọc + sửa câu chữ thay vì chọn snippet**. UX đơn giản hơn và backend không phải re-synth khi admin sửa.
+
+#### 8.4.7 `out_of_scope`
+
+Template refusal cố định ([nodes.py:43-47](../source/agent/nodes.py#L43-L47)) — **không gọi LLM** để tiết kiệm token cho câu kiểu "công thức nấu phở".
 
 ### 8.5 Analyzer behavior sau RQ9
 
@@ -1036,43 +1119,161 @@ Sau patch A+B, kỳ vọng metric thay đổi:
 
 ## 9. Deployment
 
+Hệ thống chạy 3 process độc lập: **Qdrant** (vector DB), **FastAPI backend** (RAG + LangGraph + HITL), **Next.js frontend** (chat + admin console). Không còn Streamlit từ v6.0.
+
+```
+┌──────────────────────────┐    HTTP    ┌──────────────────────────────┐    HTTP    ┌──────────────┐
+│  Next.js (browser+SSR)   │ ─────────▶ │  FastAPI (uvicorn :8000)     │ ─────────▶ │ Qdrant :6333 │
+│   :3000                  │            │  /chat /resume /pending      │            └──────────────┘
+│   • /  end-user chat     │ ◀───────── │  AsyncSqliteSaver checkpoint │
+│   • /admin HITL console  │   SSE      │  pending_threads dict        │
+└──────────────────────────┘            └──────────────────────────────┘
+                                                       │ Tavily / Gemini API
+                                                       ▼
+                                              external services
+```
+
 ### 9.1 FastAPI backend
 
-**File:** [api/main.py](../api/main.py)
+**File:** [api/main.py](../api/main.py) · **schemas:** [api/schemas.py](../api/schemas.py)
 
-Endpoints:
+#### 9.1.1 Endpoints (đúng theo source ngày 26/04/2026)
 
-| Method | Path | Input | Output |
-|---|---|---|---|
-| POST | `/chat` | `{query, session_id, chat_history}` | `{answer, sources, category}` |
-| POST | `/chat/stream` | same | SSE stream `{delta}` |
-| POST | `/chat/resume` | `{session_id, approved_snippets}` | same as `/chat` (sau HITL) |
-| GET | `/health` | — | `{qdrant, llm, status}` |
+| Method | Path | Input | Output | Mục đích |
+|---|---|---|---|---|
+| GET | `/health` | — | `{status:"ok"}` | liveness probe |
+| POST | `/chat` | `ChatRequest{query, thread_id?}` | `ChatResponse` (status `completed` hoặc `pending_web_review`) | bắt đầu / tiếp tục thread |
+| POST | `/resume/{thread_id}` | `ResumeRequest{approved:bool, override?:dict}` | `ChatResponse` (status `completed` hoặc `rejected`) | admin duyệt draft web |
+| GET | `/pending` | — | `{count, items: PendingItem[]}` | liệt kê tất cả thread đang pause (cho admin console) |
+| GET | `/pending/{thread_id}` | — | `PendingResponse{next_nodes, values, requires_approval}` | snapshot 1 thread (cho client poll) |
 
-**Session management:** LangGraph `MemorySaver` giữ state cho `thread_id = session_id` → cùng session có `chat_history` liền mạch.
+**`ChatResponse` 2 status:**
 
-**Concurrency:** 1 uvicorn worker mỗi CPU core; Qdrant client thread-safe → shared; SentenceTransformer load 1 lần khi startup.
+- `"completed"` — graph chạy xong, `answer + sources` sẵn sàng.
+- `"pending_web_review"` — graph PAUSED tại `web_finalize`. Trả `draft_answer` (chứ không phải `answer`) + `requires_approval=true`. Client phải poll `/pending/{thread_id}` hoặc đợi admin gọi `/resume`.
 
-### 9.2 Web UI (Next.js 14)
+#### 9.1.2 Vòng đời 1 thread chat
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as User (browser)
+    participant N as Next.js /api/chat
+    participant F as FastAPI /chat
+    participant G as LangGraph
+    participant A as Admin (browser)
+
+    U->>N: POST {messages, thread_id}
+    N->>F: POST {query, thread_id}
+    F->>G: ainvoke(state, config={thread_id})
+    G-->>F: snapshot (paused at web_finalize?)
+    alt category = legal_rag, không refused
+        F-->>N: {status:"completed", answer, sources}
+        N-->>U: SSE token + citations + [DONE]
+    else web_legal_search hoặc fallback
+        F->>F: pending_threads[thread_id] = {draft, sources, ...}
+        F-->>N: {status:"pending_web_review", draft_answer, thread_id}
+        N-->>U: SSE holding message + {type:"pending", value:thread_id}
+        U->>N: poll /api/chat/status?thread_id=...
+        N->>F: GET /pending/{thread_id}
+        F-->>N: {next_nodes:["web_finalize"], requires_approval:true}
+        Note over A,F: song song: admin xem, sửa, duyệt
+        A->>F: POST /resume/{tid} {approved, override?}
+        F->>G: aupdate_state(override) + ainvoke(None)
+        G-->>F: snapshot completed
+        F->>F: pending_threads.pop(tid)
+        F-->>A: {status:"completed", answer}
+        U->>N: poll lần kế tiếp → status=completed
+        N-->>U: cập nhật answer cuối cùng
+    end
+```
+
+#### 9.1.3 In-memory `pending_threads` registry
+
+Để admin console không phải duyệt từng thread bằng `aget_state()` (chậm khi nhiều thread), backend giữ `app.state.pending_threads: dict[thread_id, PendingItem]`:
+
+- **Populate** trong `/chat` ngay sau khi phát hiện `_is_paused_on_web_review(snap)` ([main.py:218-227](../api/main.py#L218-L227)).
+- **Drain** trong `/resume` cả 2 nhánh approve / reject — `app.state.pending_threads.pop(thread_id, None)` đảm bảo không leak entry.
+- **Trade-off:** mất state nếu uvicorn restart. Phù hợp cho 1 worker. Khi scale ≥2 worker phải đổi sang Redis hoặc query trực tiếp checkpointer DB.
+
+#### 9.1.4 Persistence — `AsyncSqliteSaver`
+
+LangGraph checkpoint dùng SQLite async ở `traffic_rag/checkpoints/graph.db`. Mỗi `thread_id` có 1 chuỗi snapshot — pause ở `web_finalize` có thể resume lại sau giờ, ngày miễn DB còn. Lifespan handler đóng `aiosqlite` connection khi shutdown ([main.py:130-136](../api/main.py#L130-L136)).
+
+#### 9.1.5 Concurrency
+
+- 1 uvicorn worker chạy event-loop async (FastAPI native).
+- `TrafficHybridRetriever` + `LegalAnswerGenerator` + `SentenceTransformer` load **1 lần** trong `lifespan` (~3s startup) → tránh re-init mỗi request.
+- `qdrant_client` + Tavily HTTP đều thread-safe → share giữa các coroutine.
+- Multi-worker: cần **shared checkpoint DB** + **shared pending_threads** (Redis) — chưa làm trong v6.1.
+
+### 9.2 Web UI — Next.js 14
 
 **Folder:** [app/nextjs-app/](../app/nextjs-app/)
 
-Stack: Next.js 14 App Router · TypeScript · Tailwind · Zustand · Prisma · NextAuth.
+Stack: Next.js 14 App Router · TypeScript · Tailwind · Zustand · Prisma · NextAuth (Google OAuth).
 
-- **`src/app/api/chat/route.ts`** — Edge route, nhận `{messages, thread_id}` từ client, chuyển thành `{query, thread_id}` rồi forward sang FastAPI `POST /chat`. Map `sources[]` của backend (Điều/Khoản/Điểm + tên văn bản) sang `citations[]` của UI; trả SSE token-by-token để giả lập streaming.
-- **HITL** — nếu backend trả `status="pending_web_review"`, route tự gọi `POST /resume/{thread_id}` với `approved=true` (V1 auto-approve; V2 sẽ surface nút Approve/Reject).
-- **Conversation persistence** — Zustand store giữ lịch sử ở `localStorage`; mỗi `conversation.id` được dùng làm `thread_id` để giữ liền mạch checkpoint phía LangGraph.
-- **Citation popover** — click `[3]` trong câu trả lời → mở card hiển thị `title · org · date · type · excerpt`.
-- **Tính năng UI khác** — search/pin/delete history, copy + xuất PDF (`window.print`), theme tokens (navy/teal/dark), empty-state suggested prompts.
+#### 9.2.1 Bố cục 2 trang
 
-**Chạy local:**
+| Route | Người dùng | Component | Chức năng |
+|---|---|---|---|
+| `/` | end-user | [`src/app/(chat)/page.tsx`](../app/nextjs-app/src/app/(chat)/page.tsx) | chat — trái sidebar lịch sử, phải vùng tin nhắn + composer |
+| `/admin` | admin (allowlist) | [`src/app/admin/AdminConsole.tsx`](../app/nextjs-app/src/app/admin/AdminConsole.tsx) | duyệt draft web — trái sidebar threads, phải editor + Approve/Reject |
+
+#### 9.2.2 Bridge layer — Next.js → FastAPI
+
+Vì client gửi `{messages: []}` (chuẩn ChatGPT-like) còn FastAPI nhận `{query, thread_id}`, có 1 lớp **bridge** ở Next.js:
+
+| File | Vai trò |
+|---|---|
+| [`src/app/api/chat/route.ts`](../app/nextjs-app/src/app/api/chat/route.ts) | nhận `{messages, thread_id}`, lấy `lastUserContent(messages)` → forward `{query, thread_id}` sang FastAPI `/chat`. Map `sources[]` (`{dieu, khoan, ten_van_ban, ...}`) sang `citations[]` (`{n, title, org, date, excerpt?, url?}`) cho UI. Trả SSE 3 loại event: `{type:"token", value}`, `{type:"citations", value}`, `{type:"pending", value:thread_id}`. |
+| [`src/app/api/chat/status/route.ts`](../app/nextjs-app/src/app/api/chat/status/route.ts) | client poll endpoint khi đang chờ admin. Gọi FastAPI `/pending/{thread_id}`, đọc `next_nodes` + `values.answer` để trả `{status: "pending"\|"completed"\|"rejected", answer?, citations?}`. |
+| [`src/app/api/admin/pending/route.ts`](../app/nextjs-app/src/app/api/admin/pending/route.ts) | admin-gated proxy `GET /pending`. Gọi `isAdminRequest()` trước khi forward. |
+| [`src/app/api/admin/resume/[thread_id]/route.ts`](../app/nextjs-app/src/app/api/admin/resume/[thread_id]/route.ts) | admin-gated proxy `POST /resume/{tid}`. Body validation cơ bản trước khi forward. |
+| [`src/lib/admin.ts`](../app/nextjs-app/src/lib/admin.ts) | helper `isAdminRequest()` — đọc session NextAuth + `ADMIN_EMAILS` env. Wildcard `*` = dev bypass (cho phép cả khi chưa cấu hình OAuth). CSV email = production allowlist. |
+
+#### 9.2.3 HITL flow phía client
+
+Khi server gửi `{type:"pending", value:tid}` qua SSE, [`useChat.ts`](../app/nextjs-app/src/lib/useChat.ts) bắt đầu **polling vòng đời 10 phút** (5s interval) gọi `/api/chat/status?thread_id=tid`. Khi `status === "completed"` hoặc `"rejected"` → cập nhật `lastAssistant.content + citations`. Quá 10 phút không có quyết định → ghi đè bằng dòng "⏰ Quá thời gian chờ duyệt".
+
+#### 9.2.4 Admin Console
+
+[`AdminConsole.tsx`](../app/nextjs-app/src/app/admin/AdminConsole.tsx) — client component, auto-refresh 7s:
+
+- **Sidebar trái:** danh sách `pending_threads` sắp theo `created_at` desc. Mỗi item hiển thị `query` + `category` badge + `relTime`.
+- **Editor phải:** textarea `draft_answer` (admin có thể sửa), list `sources` (URL clickable hoặc Điều/Khoản local), 2 nút **Phê duyệt & gửi** / **Từ chối**.
+- **Approve flow:** nếu admin sửa draft, gửi `override={draft_answer: editedDraft.trim()}` để `/resume` patch state qua `aupdate_state(override)` trước khi commit `web_finalize`.
+- **Auth gate:** `page.tsx` (server component) gọi `isAdminRequest()` trước render — nếu fail → trang sign-in với link về `/`.
+
+#### 9.2.5 Persistence + UX khác
+
+- **Conversation store** — Zustand + `persist` middleware → localStorage (`tlgt-chat-store`). Mỗi `conversation.id` được dùng làm `thread_id` LangGraph → checkpoint liền mạch khi user reload trang.
+- **Citation popover** — click `[3]` trong câu trả lời → card hiển thị `title · org · date · type · excerpt`.
+- **Tính năng khác:** search / pin / delete / rename history; copy + xuất PDF (`window.print`); theme tokens (navy/teal/dark mode); suggested prompts cho empty state.
+
+#### 9.2.6 Chạy local
+
 ```bash
+# Term 1 — backend
+cd traffic_rag
+uvicorn api.main:app --reload --port 8000
+
+# Term 2 — frontend
 cd traffic_rag/app/nextjs-app
-npm install
-echo "BACKEND_URL=http://localhost:8000" > .env.local
-npm run dev   # → http://localhost:3000
+npm install --ignore-scripts        # tránh postinstall fail của unrs-resolver
+cat > .env.local <<'EOF'
+BACKEND_URL=http://localhost:8000
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=dev-secret-change-me
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+ADMIN_EMAILS=*
+EOF
+npm run dev    # → http://localhost:3000
+# Admin console: http://localhost:3000/admin
 ```
-(FastAPI ở `:8000` cần chạy song song.)
+
+`ADMIN_EMAILS=*` mở /admin cho mọi user **không cần OAuth** — chỉ dùng dev. Production phải set CSV email cụ thể.
 
 ### 9.3 Docker Compose
 
@@ -1092,24 +1293,33 @@ services:
       - QDRANT_HOST=qdrant
       - COLLECTION_NAME=traffic_law_v3_e5
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
       - LANGCHAIN_TRACING_V2=true
       - LANGCHAIN_PROJECT=Traffic-RAG-Evaluation
     ports: ["8000:8000"]
+    volumes:
+      - ./traffic_rag/checkpoints:/app/checkpoints   # giữ thread state qua restart
 
   ui:
     build:
       context: ./traffic_rag/app/nextjs-app
     environment:
       - BACKEND_URL=http://api:8000
+      - NEXTAUTH_URL=http://localhost:3000
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - ADMIN_EMAILS=${ADMIN_EMAILS}
     depends_on: [api]
     ports: ["3000:3000"]
 ```
 
 ### 9.4 Observability
 
-- **LangSmith tracing** — bật qua env `LANGCHAIN_TRACING_V2=true`. Mỗi LangGraph run sinh trace hierarchical (analyzer → legal_rag → retriever + generator).
-- **Local logs** — `logs/indexer_*.log`, `logs/api_*.log`. Level INFO mặc định; DEBUG khi `DEBUG=1`.
-- **Metric export** — endpoint `/metrics` tương thích Prometheus (tổng request, latency p50/p95, error rate theo category).
+- **LangSmith tracing** — bật qua env `LANGCHAIN_TRACING_V2=true` + `LANGCHAIN_API_KEY`. Mỗi LangGraph run sinh trace hierarchical (analyzer → legal_rag {retriever, generator} → web_search → web_finalize). `LANGCHAIN_PROJECT=Traffic-RAG-Evaluation` group các run cho RQ8.
+- **Local logs** — uvicorn stdout có level INFO; key markers: `CHAT [thread_id]: <query>`, `RESUME [thread_id]: approved=...`, `Reference-pass added N chunks`, `Cross-ref pass added N`.
+- **Pending dashboard** — `GET /pending` dạng JSON dễ scrape cho Prometheus exporter (chưa cài sẵn ở v6.1).
+- **Errors visibility** — retriever / generator exception **không** silent fail mà log `exception()` đầy đủ; `error` field trong state được trả về `ChatResponse` để client hiển thị nguyên nhân thật thay vì web fallback gây nhầm lẫn.
 
 ---
 
@@ -1443,7 +1653,26 @@ Từ 500 run thực trong project `Traffic-RAG-Evaluation`:
 
 ## 13. Phụ lục
 
-### 13.1 Changelog v5.5 → v6.0 → v6.1
+### 13.1 Changelog v5.5 → v6.0 → v6.1 → v6.2
+
+#### v6.2 (26/04/2026) — Frontend migration + HITL admin console
+
+**Bối cảnh:** Streamlit UI khó scale, không có auth gate cho HITL admin. Migration hoàn toàn sang Next.js 14.
+
+**Thay đổi:**
+
+1. **Xoá Streamlit `ui/`** — thay bằng [app/nextjs-app/](../app/nextjs-app/) (Next.js 14 App Router + TypeScript + Tailwind + Zustand + NextAuth).
+2. **Bridge layer Next.js → FastAPI** — 4 route handler ([api/chat](../app/nextjs-app/src/app/api/chat/route.ts), [api/chat/status](../app/nextjs-app/src/app/api/chat/status/route.ts), [api/admin/pending](../app/nextjs-app/src/app/api/admin/pending/route.ts), [api/admin/resume](../app/nextjs-app/src/app/api/admin/resume/[thread_id]/route.ts)) chuyển contract `{messages}` ↔ `{query, thread_id}` và emit SSE 3 event types (`token` / `citations` / `pending`).
+3. **Admin Console `/admin`** ([AdminConsole.tsx](../app/nextjs-app/src/app/admin/AdminConsole.tsx)) — sidebar pending threads, draft editor, Approve/Reject với optional override. Auto-refresh 7s.
+4. **Auth gate** ([admin.ts](../app/nextjs-app/src/lib/admin.ts)) — `ADMIN_EMAILS` allowlist, `*` = dev wildcard bypass.
+5. **Backend bổ sung** — `GET /pending` (list), `app.state.pending_threads` registry để admin console không phải scan checkpoint DB.
+6. **Polling pattern** ([useChat.ts](../app/nextjs-app/src/lib/useChat.ts)) — khi nhận `{type:"pending"}` event, client poll `/api/chat/status` mỗi 5s đến khi admin quyết định (hoặc 10 phút timeout).
+7. **Tài liệu cập nhật** — §8.3-8.4 (state machine + node detail verify lại theo source), §9 (deployment viết lại hoàn toàn theo Next.js + admin flow), §13.5 (port 8501 → 3000).
+
+**Breaking:**
+
+- Bỏ Streamlit hoàn toàn — port `:8501` không còn dùng.
+- Yêu cầu Node 20+ và `npm install --ignore-scripts` (workaround postinstall fail của `unrs-resolver`).
 
 #### v6.1 (25/04/2026) — Legal Reasoning upgrade
 
@@ -1582,7 +1811,8 @@ python -m source.indexing.indexer --recreate
 docker compose up -d api ui
 
 # 4. Truy cập UI
-open http://localhost:8501
+open http://localhost:3000        # end-user chat
+open http://localhost:3000/admin  # admin HITL console (cần ADMIN_EMAILS hoặc Google sign-in)
 ```
 
 ### 13.6 Chạy lại toàn bộ research
@@ -1601,6 +1831,6 @@ python scripts/rq9_rewrite_ablation.py
 
 ---
 
-**Hết báo cáo v6.0.**
+**Hết báo cáo v6.2.**
 
 Mọi thay đổi cho v7 nên giữ cấu trúc "Research → Quyết định → Kiến trúc chi tiết" để tài liệu luôn **tự chứng minh** từng lựa chọn thiết kế bằng số liệu.

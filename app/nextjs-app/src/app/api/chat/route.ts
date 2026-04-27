@@ -58,7 +58,11 @@ function sourceToCitation(s: BackendSource, n: number) {
   };
 }
 
-function buildSSE(answer: string, sources: BackendSource[]): Response {
+function buildSSE(
+  answer: string,
+  sources: BackendSource[],
+  meta?: { pendingThreadId?: string },
+): Response {
   const stream = new ReadableStream({
     start(controller) {
       const enc = new TextEncoder();
@@ -73,6 +77,13 @@ function buildSSE(answer: string, sources: BackendSource[]): Response {
             controller.enqueue(
               enc.encode(
                 `data: ${JSON.stringify({ type: 'citations', value: citations })}\n\n`,
+              ),
+            );
+          }
+          if (meta?.pendingThreadId) {
+            controller.enqueue(
+              enc.encode(
+                `data: ${JSON.stringify({ type: 'pending', value: meta.pendingThreadId })}\n\n`,
               ),
             );
           }
@@ -112,18 +123,6 @@ async function callBackend(
   return (await res.json()) as BackendChatResponse;
 }
 
-async function autoApprove(thread_id: string): Promise<BackendChatResponse> {
-  // V1: auto-approve HITL web answers. A future iteration can surface the
-  // draft + Approve/Reject buttons in the chat UI.
-  const res = await fetch(`${BACKEND_URL}/resume/${thread_id}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ approved: true }),
-  });
-  if (!res.ok) throw new Error(`Backend /resume returned ${res.status}`);
-  return (await res.json()) as BackendChatResponse;
-}
-
 export async function POST(req: NextRequest) {
   let body: { messages?: Msg[]; thread_id?: string };
   try {
@@ -136,11 +135,17 @@ export async function POST(req: NextRequest) {
   if (!query) return new Response('No user message', { status: 400 });
 
   try {
-    let resp = await callBackend(query, body.thread_id);
+    const resp = await callBackend(query, body.thread_id);
 
     if (resp.status === 'pending_web_review') {
-      const tid = resp.thread_id || body.thread_id;
-      if (tid) resp = await autoApprove(tid);
+      // Do NOT auto-approve. Surface a holding message + the thread_id so
+      // the client can poll /api/chat/status?thread_id=... while an admin
+      // reviews on /admin.
+      const tid = resp.thread_id || body.thread_id || '';
+      const holding =
+        '🔍 Câu hỏi cần tra Internet — bản nháp đang chờ admin duyệt.\n\n' +
+        '_Bạn có thể đợi vài phút rồi tải lại, hệ thống sẽ tự cập nhật khi admin duyệt xong._';
+      return buildSSE(holding, [], { pendingThreadId: tid });
     }
 
     const answer =

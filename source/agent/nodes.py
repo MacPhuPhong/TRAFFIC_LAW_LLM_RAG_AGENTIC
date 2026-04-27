@@ -248,8 +248,8 @@ BROAD_QUERY_PATTERNS: tuple[str, ...] = (
     r"\bbao gồm\b",
 )
 
-LEGAL_RAG_TOP_K_DEFAULT = 30
-LEGAL_RAG_TOP_K_BROAD = 45
+LEGAL_RAG_TOP_K_DEFAULT = 15
+LEGAL_RAG_TOP_K_BROAD = 25
 
 
 def _is_broad_query(*texts: str) -> bool:

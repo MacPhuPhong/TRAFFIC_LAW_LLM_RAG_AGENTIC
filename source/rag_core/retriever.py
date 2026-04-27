@@ -29,8 +29,8 @@ VI_STOPWORDS = {
     "để", "sẽ", "đã", "nếu", "bị", "bởi",
 }
 
-DEFAULT_COLLECTION = "traffic_law_v3_e5"
-DEFAULT_EMBEDDING_MODEL = "intfloat/multilingual-e5-small"
+DEFAULT_COLLECTION = "Traffic_Law_Hybrid"
+DEFAULT_EMBEDDING_MODEL = "intfloat/multilingual-e5-base"
 DEFAULT_JSONL = (
     Path(__file__).resolve().parent.parent.parent / "Data" / "all_chunks.jsonl"
 )
@@ -69,7 +69,7 @@ class TrafficHybridRetriever:
     def __init__(
         self,
         qdrant_host: str = "localhost",
-        qdrant_port: int = 6334,
+        qdrant_port: int = 6333,
         collection_name: str = DEFAULT_COLLECTION,
         embedding_model: str = DEFAULT_EMBEDDING_MODEL,
         jsonl_path: str | Path = DEFAULT_JSONL,

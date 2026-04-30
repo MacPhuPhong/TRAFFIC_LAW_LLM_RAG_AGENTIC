@@ -1,4 +1,5 @@
 # BÁO CÁO KỸ THUẬT HỆ THỐNG
+
 ## Traffic-Law RAG — Trợ lý Pháp lý Giao thông Việt Nam (v6.2)
 
 **Phiên bản:** 6.2 · **Ngày:** 26/04/2026
@@ -41,14 +42,14 @@ Hệ thống **Traffic-RAG** là trợ lý AI trả lời câu hỏi về pháp 
 
 **Corpus:** 6 văn bản (tổng **~800 trang** chuẩn hoá), **2 705 chunks** sau phân đoạn phân cấp:
 
-| doc_id | Tên | Vai trò |
-|---|---|---|
-| `168/2024/NĐ-CP` | Nghị định 168/2024 xử phạt vi phạm hành chính | Mức phạt + trừ điểm GPLX (cốt lõi) |
-| `36/2024/QH15` | Luật TT-ATGT đường bộ | Luật gốc |
-| `35/2024/QH15` | Luật Đường bộ | Luật gốc |
-| `151/2024/NĐ-CP` | NĐ hướng dẫn Luật 36/2024 | Bổ trợ |
-| `47/2024/TT-BGTVT` | TT kỹ thuật, chu kỳ đăng kiểm | Kỹ thuật |
-| `79/2024/TT-BCA` | TT thủ tục đăng ký xe | Thủ tục |
+| doc_id             | Tên                                           | Vai trò                            |
+| ------------------ | --------------------------------------------- | ---------------------------------- |
+| `168/2024/NĐ-CP`   | Nghị định 168/2024 xử phạt vi phạm hành chính | Mức phạt + trừ điểm GPLX (cốt lõi) |
+| `36/2024/QH15`     | Luật TT-ATGT đường bộ                         | Luật gốc                           |
+| `35/2024/QH15`     | Luật Đường bộ                                 | Luật gốc                           |
+| `151/2024/NĐ-CP`   | NĐ hướng dẫn Luật 36/2024                     | Bổ trợ                             |
+| `47/2024/TT-BGTVT` | TT kỹ thuật, chu kỳ đăng kiểm                 | Kỹ thuật                           |
+| `79/2024/TT-BCA`   | TT thủ tục đăng ký xe                         | Thủ tục                            |
 
 ### 1.2 Sơ đồ kiến trúc tổng thể (v6.0)
 
@@ -92,34 +93,34 @@ flowchart TD
 
 ### 1.3 Tech stack
 
-| Layer | Thư viện / dịch vụ | Lý do chọn |
-|---|---|---|
-| Language | Python 3.11 | hỗ trợ type hint, pattern matching |
-| Orchestration | `langgraph` 0.2.x | state machine, HITL `interrupt_before` |
-| LLM wrapper | `langchain-google-genai` | Gemini flash tốc độ cao, chi phí thấp |
-| LLM gen | **Gemini 3.1 Flash Lite Preview** | 1M context, $0.075/1M in, $0.30/1M out |
-| Embedding | **`intfloat/multilingual-e5-small`** (384d, max_seq=512) | RQ3 winner (MRR 0.22) |
-| Vector DB | **Qdrant 1.7** (Docker) | hybrid, metadata filter, payload index |
-| Sparse | `rank_bm25` (BM25Okapi) | pure Python, dễ đồng bộ với Qdrant |
-| Web search | `tavily-python` | free tier, trả snippet dài |
-| Backend | `FastAPI` + `uvicorn` | async, WebSocket streaming |
-| Frontend | `Streamlit` | prototype nhanh, `st.chat_message` |
-| Trace/Eval | LangSmith (project `Traffic-RAG-Evaluation`) | RQ8 phân tích chi phí |
-| Container | Docker Compose | isolation Qdrant + API + UI |
+| Layer         | Thư viện / dịch vụ                                       | Lý do chọn                             |
+| ------------- | -------------------------------------------------------- | -------------------------------------- |
+| Language      | Python 3.11                                              | hỗ trợ type hint, pattern matching     |
+| Orchestration | `langgraph` 0.2.x                                        | state machine, HITL `interrupt_before` |
+| LLM wrapper   | `langchain-google-genai`                                 | Gemini flash tốc độ cao, chi phí thấp  |
+| LLM gen       | **Gemini 3.1 Flash Lite Preview**                        | 1M context, $0.075/1M in, $0.30/1M out |
+| Embedding     | **`intfloat/multilingual-e5-small`** (384d, max_seq=512) | RQ3 winner (MRR 0.22)                  |
+| Vector DB     | **Qdrant 1.7** (Docker)                                  | hybrid, metadata filter, payload index |
+| Sparse        | `rank_bm25` (BM25Okapi)                                  | pure Python, dễ đồng bộ với Qdrant     |
+| Web search    | `tavily-python`                                          | free tier, trả snippet dài             |
+| Backend       | `FastAPI` + `uvicorn`                                    | async, WebSocket streaming             |
+| Frontend      | `Streamlit`                                              | prototype nhanh,`st.chat_message`      |
+| Trace/Eval    | LangSmith (project `Traffic-RAG-Evaluation`)             | RQ8 phân tích chi phí                  |
+| Container     | Docker Compose                                           | isolation Qdrant + API + UI            |
 
 ### 1.4 Tổng hợp kết quả research (teaser)
 
 Các ablation `research/` (chi tiết ở §3–§7 và §11) đã xác lập mọi lựa chọn thiết kế trong hệ thống:
 
-| RQ | Câu hỏi | Kết luận | Quyết định |
-|---|---|---|---|
-| RQ1 | Gemini-only / Vanilla RAG / Agentic RAG khác gì? | Agentic Cit-R = 0.56 vs Gemini 0.20 | **Dùng Agentic RAG (LangGraph)** |
-| RQ2 | Hierarchical vs Fixed-512? | Hierarchical MRR 0.16 vs 0.07 | **Hierarchical chunker** |
-| RQ3 | sbert / mpnet / e5-small? | e5-small MRR 0.22, nhanh nhất, max_seq=512 | **e5-small** (migrate từ sbert) |
-| RQ4 | Qdrant / Chroma / FAISS? | Cùng chất lượng; FAISS 200× nhanh nhưng không có metadata filter | **Qdrant** (giữ filter + payload) |
-| RQ5 | Prompt không role / role / role+rules? | Rules nâng Cit-R 0.36 → 0.48 và refusal 0% → 72% | **P2 full rules** |
-| RQ8 | Đâu là cost center? | `legal_rag` node 39k token, $0.010/query | Optimize RAG trước web_search |
-| RQ9 | Rewrite query có lợi không? | Rewrite LÀM HẠI: MRR −35%, latency +45% | **TẮT rewrite** ở turn đầu |
+| RQ  | Câu hỏi                                          | Kết luận                                                         | Quyết định                        |
+| --- | ------------------------------------------------ | ---------------------------------------------------------------- | --------------------------------- |
+| RQ1 | Gemini-only / Vanilla RAG / Agentic RAG khác gì? | Agentic Cit-R = 0.56 vs Gemini 0.20                              | **Dùng Agentic RAG (LangGraph)**  |
+| RQ2 | Hierarchical vs Fixed-512?                       | Hierarchical MRR 0.16 vs 0.07                                    | **Hierarchical chunker**          |
+| RQ3 | sbert / mpnet / e5-small?                        | e5-small MRR 0.22, nhanh nhất, max_seq=512                       | **e5-small** (migrate từ sbert)   |
+| RQ4 | Qdrant / Chroma / FAISS?                         | Cùng chất lượng; FAISS 200× nhanh nhưng không có metadata filter | **Qdrant** (giữ filter + payload) |
+| RQ5 | Prompt không role / role / role+rules?           | Rules nâng Cit-R 0.36 → 0.48 và refusal 0% → 72%                 | **P2 full rules**                 |
+| RQ8 | Đâu là cost center?                              | `legal_rag` node 39k token, $0.010/query                         | Optimize RAG trước web_search     |
+| RQ9 | Rewrite query có lợi không?                      | Rewrite LÀM HẠI: MRR −35%, latency +45%                          | **TẮT rewrite** ở turn đầu        |
 
 ---
 
@@ -202,6 +203,7 @@ RE_DIEM  = re.compile(r"^([a-zđ])\s*[\)\.]\s+(.+)$", re.MULTILINE | re.IGNORECA
 Gộp các file JSON thành `Data/all_chunks.jsonl` (một dòng = một chunk với 2 trường `content` + `metadata`). Mỗi chunk có `chunk_id` duy nhất: `"{doc_id}|Đ{dieu}|K{khoan}|P{diem}"`.
 
 **Thống kê ingest (v6.0):**
+
 - Tổng chunks: **2 705**
 - Phân bổ theo doc_id: 168/2024 chiếm 46%, 36/2024 QH15 20%, 47/2024 TT-BGTVT 14%, còn lại 20%.
 - Độ dài chunk (token BPE tiếng Việt): p50=187, p95=456, max=812.
@@ -215,23 +217,24 @@ Gộp các file JSON thành `Data/all_chunks.jsonl` (một dòng = một chunk v
 Chunking là tầng đầu tiên ảnh hưởng tới recall. Câu hỏi nghiên cứu: **cắt theo cấu trúc pháp luật (Điều/Khoản/Điểm) có tốt hơn cắt cố định 512 token?**
 
 **Setup RQ2** ([research/scripts/rq2_chunking_ablation.py](../research/scripts/rq2_chunking_ablation.py)):
+
 - Encoder: **e5-small** (max_seq=512) để đảm bảo không bị truncate nếu chunk dài.
 - 2 collection Qdrant song song: `traffic_law_v3_e5` (hierarchical) và `traffic_law_fixed512` (FixedSizeChunker, 394 word/chunk, overlap 38 word).
 - 25 gold query, metric retrieval ở 2 cấp độ: **khoản-level** (chính xác) và **doc_id-level** (độ chi tiết thấp — chỉ so sánh đúng văn bản).
 
 **Kết quả retrieval:**
 
-| chunker | R@5 (khoản) | R@10 (khoản) | MRR (khoản) | nDCG@10 | Latency |
-|---|---:|---:|---:|---:|---:|
-| fixed_512 | 0.24 | 0.30 | 0.068 | 0.062 | 0.065s |
-| **hierarchical** | **0.32** | **0.44** | **0.157** | **0.171** | 0.23s |
+| chunker          | R@5 (khoản) | R@10 (khoản) | MRR (khoản) |   nDCG@10 | Latency |
+| ---------------- | ----------: | -----------: | ----------: | --------: | ------: |
+| fixed_512        |        0.24 |         0.30 |       0.068 |     0.062 |  0.065s |
+| **hierarchical** |    **0.32** |     **0.44** |   **0.157** | **0.171** |   0.23s |
 
 **Kết quả end-to-end (vanilla RAG trên cùng 25 câu):**
 
-| chunker | F1 | ROUGE-L | Cit-R (khoản) | Cit-R (doc) | Refusal |
-|---|---:|---:|---:|---:|---:|
-| fixed_512 | 0.254 | 0.214 | 0.36 | **0.64** | 0.44 |
-| hierarchical | 0.183 | 0.155 | **0.44** | 0.48 | 0.56 |
+| chunker      |    F1 | ROUGE-L | Cit-R (khoản) | Cit-R (doc) | Refusal |
+| ------------ | ----: | ------: | ------------: | ----------: | ------: |
+| fixed_512    | 0.254 |   0.214 |          0.36 |    **0.64** |    0.44 |
+| hierarchical | 0.183 |   0.155 |      **0.44** |        0.48 |    0.56 |
 
 ![RQ2 Retrieval](../research/results/figures/rq2_chunking_retrieval.png)
 ![RQ2 Answer](../research/results/figures/rq2_chunking_answer.png)
@@ -276,23 +279,23 @@ for article in doc.articles:
 
 Mỗi chunk mang **15 trường metadata** phục vụ filter/display:
 
-| Trường | Kiểu | Mục đích |
-|---|---|---|
-| `chunk_id` | string | khoá duy nhất |
-| `doc_id` | string (KW idx) | filter theo văn bản |
-| `ten_van_ban` | string | display |
-| `issuer` | string | bộ ban hành |
-| `document_type` | string | Nghị định / Luật / TT |
-| `status` | "active" (KW idx) | filter active-only |
-| `effective_date` | ISO date (KW idx) | lọc hiệu lực |
-| `topic` | string (KW idx) | `xu_phat`/`ky_thuat`/... |
-| `dieu` | int | cấp điều |
-| `dieu_title` | string | tiêu đề điều |
-| `khoan` | int/null | cấp khoản |
-| `diem` | string/null | cấp điểm |
-| `level` | 1/2/3 | độ sâu chunk |
-| `source_file` | string | đường dẫn gốc |
-| `token_estimate` | int | len(content)/4 |
+| Trường           | Kiểu              | Mục đích                 |
+| ---------------- | ----------------- | ------------------------ |
+| `chunk_id`       | string            | khoá duy nhất            |
+| `doc_id`         | string (KW idx)   | filter theo văn bản      |
+| `ten_van_ban`    | string            | display                  |
+| `issuer`         | string            | bộ ban hành              |
+| `document_type`  | string            | Nghị định / Luật / TT    |
+| `status`         | "active" (KW idx) | filter active-only       |
+| `effective_date` | ISO date (KW idx) | lọc hiệu lực             |
+| `topic`          | string (KW idx)   | `xu_phat`/`ky_thuat`/... |
+| `dieu`           | int               | cấp điều                 |
+| `dieu_title`     | string            | tiêu đề điều             |
+| `khoan`          | int/null          | cấp khoản                |
+| `diem`           | string/null       | cấp điểm                 |
+| `level`          | 1/2/3             | độ sâu chunk             |
+| `source_file`    | string            | đường dẫn gốc            |
+| `token_estimate` | int               | len(content)/4           |
 
 4 trường có **payload index Qdrant** (`doc_id`, `status`, `effective_date`, `topic`) cho phép filter O(log n) khi query.
 
@@ -305,17 +308,18 @@ Mỗi chunk mang **15 trường metadata** phục vụ filter/display:
 Encoder quyết định chất lượng recall. So sánh 3 mô hình đa ngữ có tiếng Việt:
 
 **Setup RQ3** ([research/scripts/rq3_embedding_ablation.py](../research/scripts/rq3_embedding_ablation.py)):
+
 - Encode toàn bộ 2 705 chunk + 25 query.
 - Metric: encode time, query latency, R@5/10/20, MRR, nDCG@10.
 - Prefix convention áp dụng đúng cho E5 (`passage: `/`query: `), các model khác plain text.
 
 **Kết quả:**
 
-| Model | dim | max_seq | encode corpus (s) | query (ms) | R@5 | R@10 | MRR |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| vietnamese-sbert (PhoBERT) | 768 | 256 | 837.4 | 33.0 | 0.28 | 0.32 | 0.072 |
-| multilingual-mpnet-base-v2 | 768 | 128 | 441.2 | 40.5 | 0.32 | 0.34 | 0.148 |
-| **intfloat/multilingual-e5-small** | **384** | **512** | **333.4** | **13.2** | **0.40** | **0.46** | **0.220** |
+| Model                              |     dim | max_seq | encode corpus (s) | query (ms) |      R@5 |     R@10 |       MRR |
+| ---------------------------------- | ------: | ------: | ----------------: | ---------: | -------: | -------: | --------: |
+| vietnamese-sbert (PhoBERT)         |     768 |     256 |             837.4 |       33.0 |     0.28 |     0.32 |     0.072 |
+| multilingual-mpnet-base-v2         |     768 |     128 |             441.2 |       40.5 |     0.32 |     0.34 |     0.148 |
+| **intfloat/multilingual-e5-small** | **384** | **512** |         **333.4** |   **13.2** | **0.40** | **0.46** | **0.220** |
 
 ![RQ3 Recall](../research/results/figures/rq3_embedding_recall.png)
 ![RQ3 Speed](../research/results/figures/rq3_embedding_speed.png)
@@ -342,14 +346,14 @@ $$
 
 Trong đó:
 
-| Ký hiệu | Ý nghĩa |
-|---|---|
-| $q$ | vector query sau mean-pool |
-| $p^{+}$ | vector passage **positive** (đúng với query) |
-| $p_i$ | một vector trong batch gồm 1 positive + $N{-}1$ negative |
-| $\operatorname{sim}(\cdot,\cdot)$ | cosine similarity (sau L2-normalize) |
-| $\tau$ | temperature, E5 dùng $\tau = 0.01$ |
-| $N$ | batch size (E5 dùng $N = 32$) + 7 hard-negative mined từ BM25 |
+| Ký hiệu                           | Ý nghĩa                                                      |
+| --------------------------------- | ------------------------------------------------------------ |
+| $q$                               | vector query sau mean-pool                                   |
+| $p^{+}$                           | vector passage**positive** (đúng với query)                  |
+| $p_i$                             | một vector trong batch gồm 1 positive +$N{-}1$ negative      |
+| $\operatorname{sim}(\cdot,\cdot)$ | cosine similarity (sau L2-normalize)                         |
+| $\tau$                            | temperature, E5 dùng$\tau = 0.01$                            |
+| $N$                               | batch size (E5 dùng$N = 32$) + 7 hard-negative mined từ BM25 |
 
 **Trực giác:** công thức ép $q$ gần $p^{+}$ và xa mọi $p_i$ khác. Khi $\tau$ nhỏ, softmax "sắc" hơn → gradient ép mạnh tách positive/negative.
 
@@ -382,10 +386,10 @@ HNSW trong Qdrant chỉ cần dot-product O($d$) thay vì cosine đầy đủ �
 
 E5 được train với hai prefix riêng biệt; **dùng sai prefix = mất ~30% recall**.
 
-| Trường hợp | Prefix | Khi nào |
-|---|---|---|
-| Document encoding (indexing) | `"passage: "` | trong `indexer.py` |
-| Query encoding (retrieval) | `"query: "` | trong `retriever.py` |
+| Trường hợp                   | Prefix        | Khi nào              |
+| ---------------------------- | ------------- | -------------------- |
+| Document encoding (indexing) | `"passage: "` | trong `indexer.py`   |
+| Query encoding (retrieval)   | `"query: "`   | trong `retriever.py` |
 
 **Code thực tế** ([source/indexing/indexer.py:42](../source/indexing/indexer.py#L42)):
 
@@ -405,15 +409,15 @@ q_vec = self.model.encode(QUERY_PREFIX + query, normalize_embeddings=True)
 
 ### 4.4 So sánh trực quan sbert ↔ e5-small
 
-| Tiêu chí | vietnamese-sbert | **e5-small (prod)** |
-|---|---|---|
-| Params | 135M | 118M |
-| Dim | 768 | **384** |
-| Max seq | 256 (truncate khoản dài) | **512** |
-| Loss | MSE (teacher distillation) | **InfoNCE contrastive** |
-| Training data | Vietnamese parallel corpus | 1B multilingual pairs |
-| MRR (25 gold) | 0.072 | **0.220** (×3) |
-| Query latency | 33 ms | **13 ms** |
+| Tiêu chí      | vietnamese-sbert           | **e5-small (prod)**     |
+| ------------- | -------------------------- | ----------------------- |
+| Params        | 135M                       | 118M                    |
+| Dim           | 768                        | **384**                 |
+| Max seq       | 256 (truncate khoản dài)   | **512**                 |
+| Loss          | MSE (teacher distillation) | **InfoNCE contrastive** |
+| Training data | Vietnamese parallel corpus | 1B multilingual pairs   |
+| MRR (25 gold) | 0.072                      | **0.220** (×3)          |
+| Query latency | 33 ms                      | **13 ms**               |
 
 ### 4.5 Migration sbert → e5-small (thực hiện 25/04/2026)
 
@@ -432,17 +436,18 @@ q_vec = self.model.encode(QUERY_PREFIX + query, normalize_embeddings=True)
 Khi đã quyết encoder, câu hỏi tiếp theo: **vector DB nào phù hợp?**
 
 **Setup RQ4** ([research/scripts/rq4_vectordb_real.py](../research/scripts/rq4_vectordb_real.py)):
+
 - Cùng 2 705 point (dim 768, dùng mpnet cho thí nghiệm này để tránh re-embed).
 - Đo **100 query × lặp 25 câu** = 2 500 query cho mỗi backend.
 - Metric: p50/p95/mean latency, R@10 so với gold chunk, peak RSS (psutil).
 
 **Kết quả:**
 
-| Backend | p50 (ms) | p95 (ms) | R@10 | peak RSS (MB) | Ghi chú |
-|---|---:|---:|---:|---:|---|
-| Qdrant (server, HNSW) | 12.73 | 15.30 | 0.32 | 1118 | server riêng, có metadata filter |
-| Chroma (persistent, HNSW) | 9.78 | 12.68 | 0.32 | 1137 | in-process |
-| **FAISS (IVF-Flat nlist=64)** | **0.06** | **0.21** | 0.32 | 1149 | in-memory, không filter |
+| Backend                       | p50 (ms) | p95 (ms) | R@10 | peak RSS (MB) | Ghi chú                          |
+| ----------------------------- | -------: | -------: | ---: | ------------: | -------------------------------- |
+| Qdrant (server, HNSW)         |    12.73 |    15.30 | 0.32 |          1118 | server riêng, có metadata filter |
+| Chroma (persistent, HNSW)     |     9.78 |    12.68 | 0.32 |          1137 | in-process                       |
+| **FAISS (IVF-Flat nlist=64)** | **0.06** | **0.21** | 0.32 |          1149 | in-memory, không filter          |
 
 ![RQ4 Latency](../research/results/figures/rq4_latency_comparison.png)
 ![RQ4 Memory-Recall](../research/results/figures/rq4_memory_recall_tradeoff.png)
@@ -486,18 +491,18 @@ Mặc định HNSW `m=16, ef_construct=100`. Không override vì 2 705 point ch�
 
 ### 5.5 Thống kê sau indexing (v6.1, 25/04/2026)
 
-| Tham số | Giá trị |
-|---|---|
-| Collection | `traffic_law_v3_e5` |
-| Points | **2 818** (v6.0: 2 705 + 113 chunk TT 72/2024/TT-BCA) |
-| Dim × Distance | 384 × Cosine |
-| Payload indexes | 4 KEYWORD |
-| Disk (vol Docker) | ~13 MB |
-| Index time (CPU) | ~350 s embed + 9 s upsert (re-index toàn bộ sau khi thêm TT72) |
-| Fallback | `traffic_law_v2` (sbert 768d) vẫn giữ — chưa có TT72 |
+| Tham số           | Giá trị                                                        |
+| ----------------- | -------------------------------------------------------------- |
+| Collection        | `traffic_law_v3_e5`                                            |
+| Points            | **2 818** (v6.0: 2 705 + 113 chunk TT 72/2024/TT-BCA)          |
+| Dim × Distance    | 384 × Cosine                                                   |
+| Payload indexes   | 4 KEYWORD                                                      |
+| Disk (vol Docker) | ~13 MB                                                         |
+| Index time (CPU)  | ~350 s embed + 9 s upsert (re-index toàn bộ sau khi thêm TT72) |
+| Fallback          | `traffic_law_v2` (sbert 768d) vẫn giữ — chưa có TT72           |
 
-> **Văn bản mới bổ sung (v6.1):** Thông tư 72/2024/TT-BCA về *Quy trình điều tra,
-> giải quyết tai nạn giao thông đường bộ của CSGT* — 113 chunk (L1: 17 / L2: 64
+> **Văn bản mới bổ sung (v6.1):** Thông tư 72/2024/TT-BCA về _Quy trình điều tra,
+> giải quyết tai nạn giao thông đường bộ của CSGT_ — 113 chunk (L1: 17 / L2: 64
 > / L3: 32), 29 Điều. Nguồn dữ liệu cho Quy tắc 14 của Generator (xem §8.6).
 
 ---
@@ -509,6 +514,7 @@ Mặc định HNSW `m=16, ef_construct=100`. Không override vì 2 705 point ch�
 Một giả định phổ biến: LLM viết lại câu hỏi thành ngôn ngữ pháp lý sẽ giúp retriever. **Câu hỏi:** analyzer có nên expand query trước khi retrieve không?
 
 **Setup RQ9** ([research/scripts/rq9_rewrite_ablation.py](../research/scripts/rq9_rewrite_ablation.py)):
+
 - 2 variant × 25 gold query:
   - **NO_REWRITE:** dùng thẳng câu user cho cả retriever và generator.
   - **REWRITE:** analyzer sinh `(standalone_query, expanded_query)`; retriever dùng `expanded_query`, generator trả lời `standalone_query`.
@@ -516,10 +522,10 @@ Một giả định phổ biến: LLM viết lại câu hỏi thành ngôn ngữ
 
 **Kết quả:**
 
-| variant | R@5 | R@10 | MRR | nDCG@10 | F1 | ROUGE-L | Cit-R | Cit-F1 | Refusal | Latency |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| **NO_REWRITE** | **0.40** | **0.46** | **0.197** | **0.212** | 0.259 | 0.208 | **0.44** | **0.233** | 0.56 | **1.87s** |
-| REWRITE | 0.34 | 0.42 | 0.127 | 0.144 | 0.274 | 0.228 | 0.38 | 0.214 | 0.52 | 2.72s |
+| variant        |      R@5 |     R@10 |       MRR |   nDCG@10 |    F1 | ROUGE-L |    Cit-R |    Cit-F1 | Refusal |   Latency |
+| -------------- | -------: | -------: | --------: | --------: | ----: | ------: | -------: | --------: | ------: | --------: |
+| **NO_REWRITE** | **0.40** | **0.46** | **0.197** | **0.212** | 0.259 |   0.208 | **0.44** | **0.233** |    0.56 | **1.87s** |
+| REWRITE        |     0.34 |     0.42 |     0.127 |     0.144 | 0.274 |   0.228 |     0.38 |     0.214 |    0.52 |     2.72s |
 
 ![RQ9 Comparison](../research/results/figures/rq9_rewrite_comparison.png)
 ![RQ9 Per-category](../research/results/figures/rq9_rewrite_per_category.png)
@@ -535,6 +541,7 @@ Một giả định phổ biến: LLM viết lại câu hỏi thành ngôn ngữ
 ### 6.3 Quyết định: TẮT rewrite ở turn đầu, giữ analyzer cho routing
 
 Analyzer **vẫn cần** cho:
+
 1. **Category classification** (legal / chit_chat / web_search / out_of_scope) — routing LangGraph.
 2. **Standalone resolution khi có history** — "Còn trường hợp xe máy thì sao?" → "Mức phạt xe máy vượt đèn đỏ?".
 
@@ -589,7 +596,7 @@ bm25_scores = self.bm25.get_scores(vn_tokenize(query))
 top_idx = np.argsort(-bm25_scores)[:top_k * 2]
 ```
 
-Tokenizer VN dùng `pyvi.ViTokenizer.tokenize(...).split()` — xử lý đúng từ ghép ("vượt\_đèn\_đỏ").
+Tokenizer VN dùng `pyvi.ViTokenizer.tokenize(...).split()` — xử lý đúng từ ghép ("vượt_đèn_đỏ").
 
 **Công thức BM25 Okapi** (với $k_1 = 1.5$, $b = 0.75$):
 
@@ -601,20 +608,21 @@ $$
 \operatorname{IDF}(t) \;=\; \log\!\left(\frac{N - \operatorname{df}(t) + 0.5}{\operatorname{df}(t) + 0.5} + 1\right)
 $$
 
-| Ký hiệu | Ý nghĩa | Ví dụ với corpus Traffic-RAG |
-|---|---|---|
-| $D$ | document (chunk) | 1 khoản, trung bình 187 token |
-| $Q$ | query sau tokenize | `["vượt_đèn_đỏ", "ô_tô", "phạt"]` |
-| $t$ | 1 term trong $Q$ | `"vượt_đèn_đỏ"` |
-| $f(t, D)$ | số lần $t$ xuất hiện trong $D$ | 2 |
-| $\lvert D\rvert$ | độ dài $D$ tính theo token | 187 |
-| $\operatorname{avgDL}$ | độ dài trung bình trên corpus | 195 |
-| $N$ | tổng số chunk | **2 705** |
-| $\operatorname{df}(t)$ | số chunk chứa $t$ | 42 |
-| $k_1$ | term-frequency saturation | **1.5** (giảm effect của $f$ lớn) |
-| $b$ | length normalization strength | **0.75** (0 = tắt, 1 = toàn phần) |
+| Ký hiệu                | Ý nghĩa                       | Ví dụ với corpus Traffic-RAG      |
+| ---------------------- | ----------------------------- | --------------------------------- |
+| $D$                    | document (chunk)              | 1 khoản, trung bình 187 token     |
+| $Q$                    | query sau tokenize            | `["vượt_đèn_đỏ", "ô_tô", "phạt"]` |
+| $t$                    | 1 term trong$Q$               | `"vượt_đèn_đỏ"`                   |
+| $f(t, D)$              | số lần$t$ xuất hiện trong $D$ | 2                                 |
+| $\lvert D\rvert$       | độ dài$D$ tính theo token     | 187                               |
+| $\operatorname{avgDL}$ | độ dài trung bình trên corpus | 195                               |
+| $N$                    | tổng số chunk                 | **2 705**                         |
+| $\operatorname{df}(t)$ | số chunk chứa$t$              | 42                                |
+| $k_1$                  | term-frequency saturation     | **1.5** (giảm effect của $f$ lớn) |
+| $b$                    | length normalization strength | **0.75** (0 = tắt, 1 = toàn phần) |
 
 **Trực giác 2 tham số:**
+
 - $k_1$ càng lớn → càng "thưởng" khi từ xuất hiện nhiều lần. Chọn 1.5 cho văn bản pháp luật có từ khoá lặp.
 - $b$ càng lớn → càng phạt văn bản dài. Chọn 0.75 để khoản dài (>400 token) không bị "lấn át" khoản ngắn khi scoring.
 
@@ -673,7 +681,7 @@ với mỗi match → tìm chunk khớp `(doc_id, dieu, khoan, diem?)` trong met
 
 ### 6.5 Ví dụ trace (1 query thực tế)
 
-Query: *"Vượt đèn đỏ xe ô tô phạt bao nhiêu và trừ điểm GPLX ra sao?"*
+Query: _"Vượt đèn đỏ xe ô tô phạt bao nhiêu và trừ điểm GPLX ra sao?"_
 
 ```
 DENSE top-3:    Điều 6.5.a (168/2024, s=0.823), Điều 6.11.b (0.801), Điều 6.7 (0.785)
@@ -693,6 +701,7 @@ Final top_k=10: 10 chunk đầy đủ mức phạt + cơ chế trừ điểm
 Generator dùng LLM đóng vai trò "copy-paste thông minh" — trả lời từ ngữ cảnh đã retrieve. **Câu hỏi:** role definition + behavioral rules có đáng 84 dòng prompt không?
 
 **Setup RQ5** ([research/scripts/rq5_prompts_ablation.py](../research/scripts/rq5_prompts_ablation.py)):
+
 - Cùng retriever top_k=10, cùng model, cùng 25 câu.
 - 3 variant prompt:
   - **P0 zero-shot:** một câu "Trả lời dựa vào NGỮ CẢNH."
@@ -701,11 +710,11 @@ Generator dùng LLM đóng vai trò "copy-paste thông minh" — trả lời t�
 
 **Kết quả:**
 
-| variant | F1 | ROUGE-L | Cit-P | Cit-R | Cit-F1 | Refusal | Latency |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| P0 zero-shot | **0.303** | **0.260** | 0.181 | 0.36 | 0.196 | 0.00 | **3.76s** |
-| P1 role-only | 0.284 | 0.248 | 0.182 | 0.40 | 0.198 | 0.00 | 3.70s |
-| **P2 full rules** | 0.201 | 0.168 | **0.227** | **0.48** | **0.248** | **0.72** | 4.67s |
+| variant           |        F1 |   ROUGE-L |     Cit-P |    Cit-R |    Cit-F1 |  Refusal |   Latency |
+| ----------------- | --------: | --------: | --------: | -------: | --------: | -------: | --------: |
+| P0 zero-shot      | **0.303** | **0.260** |     0.181 |     0.36 |     0.196 |     0.00 | **3.76s** |
+| P1 role-only      |     0.284 |     0.248 |     0.182 |     0.40 |     0.198 |     0.00 |     3.70s |
+| **P2 full rules** |     0.201 |     0.168 | **0.227** | **0.48** | **0.248** | **0.72** |     4.67s |
 
 ![RQ5 Comparison](../research/results/figures/rq5_prompts_comparison.png)
 ![RQ5 Per-category](../research/results/figures/rq5_prompts_per_category.png)
@@ -724,6 +733,7 @@ Hệ thống production dùng P2 ([source/rag_core/generator.py:25](../source/ra
 ### 7.4 Kiến trúc prompt P2 (14 rules — cập nhật v6.1)
 
 **Role:**
+
 > "Bạn là Trợ lý Pháp lý Giao thông Việt Nam — chuyên gia tư vấn các văn bản quy phạm pháp luật mới nhất (2024–2025)."
 
 **Rules (tóm tắt):**
@@ -835,10 +845,10 @@ stateDiagram-v2
 
 **Hai con đường tới `web_search`** (user thường nhầm là một):
 
-| Đường | Khi nào | Phân biệt phía UI |
-|---|---|---|
-| **Trực tiếp** `analyzer → web_search` | Analyzer phân loại `category = "web_legal_search"` (luật nước ngoài, tin cực mới) | `category` trong response giữ `"web_legal_search"` |
-| **Fallback** `analyzer → legal_rag → web_search` | Generator trả `refused = True` HOẶC retriever trả 0 chunk | `category` vẫn là `"legal_rag"` — UI biết "đã thử RAG nhưng phải tra web" |
+| Đường                                            | Khi nào                                                                           | Phân biệt phía UI                                                         |
+| ------------------------------------------------ | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| **Trực tiếp** `analyzer → web_search`            | Analyzer phân loại `category = "web_legal_search"` (luật nước ngoài, tin cực mới) | `category` trong response giữ `"web_legal_search"`                        |
+| **Fallback** `analyzer → legal_rag → web_search` | Generator trả `refused = True` HOẶC retriever trả 0 chunk                         | `category` vẫn là `"legal_rag"` — UI biết "đã thử RAG nhưng phải tra web" |
 
 `web_search_node` cố ý **không ghi đè `category`** ([nodes.py:506-513](../source/agent/nodes.py#L506-L513)) để UI có thể phân biệt.
 
@@ -894,12 +904,12 @@ Flow đầy đủ (≠ "chỉ retrieve + generate"):
 
 **3 nhánh return state khác nhau:**
 
-| Trường hợp | `chunks` | `answer` | `refused` | `error` | Hướng đi tiếp |
-|---|---|---|---|---|---|
-| Retriever exception | `[]` | `""` | `False` | `retriever_error: ...` | `legal_fallback_router → END` (không web fallback cho infra error) |
-| Retriever 0 chunk | `[]` | `""` | `True` | — | `legal_fallback_router → web_search` |
-| Generator refused | có | `"Không đủ..."` | `True` | — | `legal_fallback_router → web_search` |
-| Generator OK | có | có | `False` | — | `legal_fallback_router → END` |
+| Trường hợp          | `chunks` | `answer`        | `refused` | `error`                | Hướng đi tiếp                                                      |
+| ------------------- | -------- | --------------- | --------- | ---------------------- | ------------------------------------------------------------------ |
+| Retriever exception | `[]`     | `""`            | `False`   | `retriever_error: ...` | `legal_fallback_router → END` (không web fallback cho infra error) |
+| Retriever 0 chunk   | `[]`     | `""`            | `True`    | —                      | `legal_fallback_router → web_search`                               |
+| Generator refused   | có       | `"Không đủ..."` | `True`    | —                      | `legal_fallback_router → web_search`                               |
+| Generator OK        | có       | có              | `False`   | —                      | `legal_fallback_router → END`                                      |
 
 #### 8.4.3 `legal_fallback_router` — edge condition
 
@@ -942,6 +952,7 @@ Flow:
 Graph compile với `interrupt_before=["web_finalize"]` → khi tới đây, LangGraph **dừng** và trả về cho FastAPI. FastAPI thấy `next_nodes` chứa `"web_finalize"` → trả `{status: "pending_web_review", thread_id}`.
 
 Khi admin gọi `/resume/{thread_id}` (xem §9.1):
+
 - Reject: graph cập nhật state với `answer=REJECTED_MESSAGE` và **không chạy** `web_finalize`.
 - Approve: graph chạy `web_finalize` → copy `draft_answer` → `answer`, clear `requires_approval`.
 
@@ -975,8 +986,8 @@ def analyzer_node(state):
 
 Khi user hỏi các câu **phân định lỗi trong va chạm** — ví dụ:
 
-> *"Tôi chạy ngược chiều va chạm với người chạy quá tốc độ thì lỗi do ai?"*
-> *"Tôi đi đúng làn, một người từ làn ngược hướng sang đường không xi nhan thì tôi va chạm phải họ, lỗi do ai?"*
+> _"Tôi chạy ngược chiều va chạm với người chạy quá tốc độ thì lỗi do ai?"_
+> _"Tôi đi đúng làn, một người từ làn ngược hướng sang đường không xi nhan thì tôi va chạm phải họ, lỗi do ai?"_
 
 …hệ thống **bỏ qua RAG** và rơi xuống nhánh Web Search Fallback (Tavily) → trả về câu **chờ phê duyệt**, đôi khi bị reviewer reject. UX trông như "hệ thống không biết câu này".
 
@@ -993,10 +1004,10 @@ flowchart LR
 
 **Truy ngược nguyên nhân (root-cause analysis):** không có một mà **hai điểm đứt gãy**.
 
-| # | Tầng | Triệu chứng | Nguyên nhân |
-|---|---|---|---|
-| 1 | **Analyzer** | Phân loại nhầm `web_legal_search` | Prompt không có few-shot cho dạng câu hỏi mô tả tình huống tai nạn — LLM cho rằng "đây không phải hỏi về luật". `expanded_query` (nếu được giữ) cũng chỉ là 1 cụm chung chung, không tách hành vi. |
-| 2 | **Generator** | Trả `REFUSAL_PHRASE` → `legal_fallback_router` route web | Quy tắc 4 ("không suy đoán, nếu không thấy thông tin phải trả lời Không có") đè lên Quy tắc 11. Văn bản pháp luật KHÔNG có chunk nào ghi sẵn "ai có lỗi" → LLM coi là thiếu thông tin → từ chối. |
+| #   | Tầng          | Triệu chứng                                              | Nguyên nhân                                                                                                                                                                                       |
+| --- | ------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **Analyzer**  | Phân loại nhầm `web_legal_search`                        | Prompt không có few-shot cho dạng câu hỏi mô tả tình huống tai nạn — LLM cho rằng "đây không phải hỏi về luật".`expanded_query` (nếu được giữ) cũng chỉ là 1 cụm chung chung, không tách hành vi. |
+| 2   | **Generator** | Trả `REFUSAL_PHRASE` → `legal_fallback_router` route web | Quy tắc 4 ("không suy đoán, nếu không thấy thông tin phải trả lời Không có") đè lên Quy tắc 11. Văn bản pháp luật KHÔNG có chunk nào ghi sẵn "ai có lỗi" → LLM coi là thiếu thông tin → từ chối.  |
 
 #### 8.6.2 Bản chất pháp lý của câu hỏi "lỗi do ai"
 
@@ -1073,10 +1084,12 @@ flowchart TD
 ### Phân tích lỗi va chạm
 
 **Bước 1 – Hành vi của hai bên:**
+
 - Bên A (bạn): **đi ngược chiều**.
 - Bên B: **chạy quá tốc độ quy định**.
 
 **Bước 2 – Đối chiếu quy định:**
+
 - Đi ngược chiều trên đường một chiều bị phạt **4.000.000 – 6.000.000 đồng**
   và **trừ 02 điểm** GPLX [Điều 6, Khoản 5, Điểm c — NĐ 168/2024/NĐ-CP].
 - Chạy quá tốc độ quy định bị phạt theo các mức tương ứng tại
@@ -1104,12 +1117,12 @@ nhưng nó cung cấp:
 
 Sau patch A+B, kỳ vọng metric thay đổi:
 
-| Metric | Trước | Kỳ vọng sau | Lý do |
-|---|---:|---:|---|
-| Refusal rate (category accident-fault) | ~80–90% | <20% | Quy tắc 14 override Quy tắc 4 |
-| Web-search fallback rate | ~80% | <15% | Analyzer không còn route nhầm |
-| Cit-R cho câu accident-fault | n/a (trả refusal) | ≥0.40 | Mỗi hành vi cần ≥1 trích dẫn |
-| Latency (per-query) | +0–5% | +5–10% | Output dài hơn (4 bước) |
+| Metric                                 |             Trước | Kỳ vọng sau | Lý do                         |
+| -------------------------------------- | ----------------: | ----------: | ----------------------------- |
+| Refusal rate (category accident-fault) |           ~80–90% |        <20% | Quy tắc 14 override Quy tắc 4 |
+| Web-search fallback rate               |              ~80% |        <15% | Analyzer không còn route nhầm |
+| Cit-R cho câu accident-fault           | n/a (trả refusal) |       ≥0.40 | Mỗi hành vi cần ≥1 trích dẫn  |
+| Latency (per-query)                    |             +0–5% |      +5–10% | Output dài hơn (4 bước)       |
 
 **Cần làm để xác nhận:** mở rộng `eval_qa.jsonl` (hiện 25 câu, không có category
 "accident-fault") thêm 5–8 câu phân định lỗi với gold citations từ Luật 36 + NĐ
@@ -1139,13 +1152,13 @@ Hệ thống chạy 3 process độc lập: **Qdrant** (vector DB), **FastAPI ba
 
 #### 9.1.1 Endpoints (đúng theo source ngày 26/04/2026)
 
-| Method | Path | Input | Output | Mục đích |
-|---|---|---|---|---|
-| GET | `/health` | — | `{status:"ok"}` | liveness probe |
-| POST | `/chat` | `ChatRequest{query, thread_id?}` | `ChatResponse` (status `completed` hoặc `pending_web_review`) | bắt đầu / tiếp tục thread |
-| POST | `/resume/{thread_id}` | `ResumeRequest{approved:bool, override?:dict}` | `ChatResponse` (status `completed` hoặc `rejected`) | admin duyệt draft web |
-| GET | `/pending` | — | `{count, items: PendingItem[]}` | liệt kê tất cả thread đang pause (cho admin console) |
-| GET | `/pending/{thread_id}` | — | `PendingResponse{next_nodes, values, requires_approval}` | snapshot 1 thread (cho client poll) |
+| Method | Path                   | Input                                          | Output                                                        | Mục đích                                             |
+| ------ | ---------------------- | ---------------------------------------------- | ------------------------------------------------------------- | ---------------------------------------------------- |
+| GET    | `/health`              | —                                              | `{status:"ok"}`                                               | liveness probe                                       |
+| POST   | `/chat`                | `ChatRequest{query, thread_id?}`               | `ChatResponse` (status `completed` hoặc `pending_web_review`) | bắt đầu / tiếp tục thread                            |
+| POST   | `/resume/{thread_id}`  | `ResumeRequest{approved:bool, override?:dict}` | `ChatResponse` (status `completed` hoặc `rejected`)           | admin duyệt draft web                                |
+| GET    | `/pending`             | —                                              | `{count, items: PendingItem[]}`                               | liệt kê tất cả thread đang pause (cho admin console) |
+| GET    | `/pending/{thread_id}` | —                                              | `PendingResponse{next_nodes, values, requires_approval}`      | snapshot 1 thread (cho client poll)                  |
 
 **`ChatResponse` 2 status:**
 
@@ -1215,22 +1228,22 @@ Stack: Next.js 14 App Router · TypeScript · Tailwind · Zustand · Prisma · N
 
 #### 9.2.1 Bố cục 2 trang
 
-| Route | Người dùng | Component | Chức năng |
-|---|---|---|---|
-| `/` | end-user | [`src/app/(chat)/page.tsx`](../app/nextjs-app/src/app/(chat)/page.tsx) | chat — trái sidebar lịch sử, phải vùng tin nhắn + composer |
+| Route    | Người dùng        | Component                                                                            | Chức năng                                                            |
+| -------- | ----------------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| `/`      | end-user          | [`src/app/(chat)/page.tsx`](<../app/nextjs-app/src/app/(chat)/page.tsx>)             | chat — trái sidebar lịch sử, phải vùng tin nhắn + composer           |
 | `/admin` | admin (allowlist) | [`src/app/admin/AdminConsole.tsx`](../app/nextjs-app/src/app/admin/AdminConsole.tsx) | duyệt draft web — trái sidebar threads, phải editor + Approve/Reject |
 
 #### 9.2.2 Bridge layer — Next.js → FastAPI
 
 Vì client gửi `{messages: []}` (chuẩn ChatGPT-like) còn FastAPI nhận `{query, thread_id}`, có 1 lớp **bridge** ở Next.js:
 
-| File | Vai trò |
-|---|---|
-| [`src/app/api/chat/route.ts`](../app/nextjs-app/src/app/api/chat/route.ts) | nhận `{messages, thread_id}`, lấy `lastUserContent(messages)` → forward `{query, thread_id}` sang FastAPI `/chat`. Map `sources[]` (`{dieu, khoan, ten_van_ban, ...}`) sang `citations[]` (`{n, title, org, date, excerpt?, url?}`) cho UI. Trả SSE 3 loại event: `{type:"token", value}`, `{type:"citations", value}`, `{type:"pending", value:thread_id}`. |
-| [`src/app/api/chat/status/route.ts`](../app/nextjs-app/src/app/api/chat/status/route.ts) | client poll endpoint khi đang chờ admin. Gọi FastAPI `/pending/{thread_id}`, đọc `next_nodes` + `values.answer` để trả `{status: "pending"\|"completed"\|"rejected", answer?, citations?}`. |
-| [`src/app/api/admin/pending/route.ts`](../app/nextjs-app/src/app/api/admin/pending/route.ts) | admin-gated proxy `GET /pending`. Gọi `isAdminRequest()` trước khi forward. |
-| [`src/app/api/admin/resume/[thread_id]/route.ts`](../app/nextjs-app/src/app/api/admin/resume/[thread_id]/route.ts) | admin-gated proxy `POST /resume/{tid}`. Body validation cơ bản trước khi forward. |
-| [`src/lib/admin.ts`](../app/nextjs-app/src/lib/admin.ts) | helper `isAdminRequest()` — đọc session NextAuth + `ADMIN_EMAILS` env. Wildcard `*` = dev bypass (cho phép cả khi chưa cấu hình OAuth). CSV email = production allowlist. |
+| File                                                                                                               | Vai trò                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [`src/app/api/chat/route.ts`](../app/nextjs-app/src/app/api/chat/route.ts)                                         | nhận `{messages, thread_id}`, lấy `lastUserContent(messages)` → forward `{query, thread_id}` sang FastAPI `/chat`. Map `sources[]` (`{dieu, khoan, ten_van_ban, ...}`) sang `citations[]` (`{n, title, org, date, excerpt?, url?}`) cho UI. Trả SSE 3 loại event: `{type:"token", value}`, `{type:"citations", value}`, `{type:"pending", value:thread_id}`. |
+| [`src/app/api/chat/status/route.ts`](../app/nextjs-app/src/app/api/chat/status/route.ts)                           | client poll endpoint khi đang chờ admin. Gọi FastAPI `/pending/{thread_id}`, đọc `next_nodes` + `values.answer` để trả `{status: "pending"\|"completed"\|"rejected", answer?, citations?}`.                                                                                                                                                                  |
+| [`src/app/api/admin/pending/route.ts`](../app/nextjs-app/src/app/api/admin/pending/route.ts)                       | admin-gated proxy `GET /pending`. Gọi `isAdminRequest()` trước khi forward.                                                                                                                                                                                                                                                                                  |
+| [`src/app/api/admin/resume/[thread_id]/route.ts`](../app/nextjs-app/src/app/api/admin/resume/[thread_id]/route.ts) | admin-gated proxy `POST /resume/{tid}`. Body validation cơ bản trước khi forward.                                                                                                                                                                                                                                                                            |
+| [`src/lib/admin.ts`](../app/nextjs-app/src/lib/admin.ts)                                                           | helper `isAdminRequest()` — đọc session NextAuth + `ADMIN_EMAILS` env. Wildcard `*` = dev bypass (cho phép cả khi chưa cấu hình OAuth). CSV email = production allowlist.                                                                                                                                                                                    |
 
 #### 9.2.3 HITL flow phía client
 
@@ -1298,7 +1311,7 @@ services:
       - LANGCHAIN_PROJECT=Traffic-RAG-Evaluation
     ports: ["8000:8000"]
     volumes:
-      - ./traffic_rag/checkpoints:/app/checkpoints   # giữ thread state qua restart
+      - ./traffic_rag/checkpoints:/app/checkpoints # giữ thread state qua restart
 
   ui:
     build:
@@ -1331,13 +1344,13 @@ Phần này giải thích chính xác **cách đo** mọi số liệu xuất hi�
 
 **File:** [research/data/eval_qa.jsonl](../research/data/eval_qa.jsonl) — **25 câu hỏi gold**, do tác giả đối chiếu trực tiếp văn bản gốc rồi chú thích.
 
-| Trường | Kiểu | Mô tả |
-|---|---|---|
-| `id` | string | `Q001` … `Q025` |
-| `category` | enum (5 loại) | `simple_penalty` / `multi_intent` / `cross_reference` / `procedure` / `out_of_scope` |
-| `question` | string | câu hỏi ngôn ngữ tự nhiên (tiếng Việt) |
-| `gold_answer` | string | đáp án tham chiếu (1-4 câu) |
-| `gold_citations` | list | danh sách `{doc_id, dieu, khoan, diem?}` đúng |
+| Trường           | Kiểu          | Mô tả                                                                                |
+| ---------------- | ------------- | ------------------------------------------------------------------------------------ |
+| `id`             | string        | `Q001` … `Q025`                                                                      |
+| `category`       | enum (5 loại) | `simple_penalty` / `multi_intent` / `cross_reference` / `procedure` / `out_of_scope` |
+| `question`       | string        | câu hỏi ngôn ngữ tự nhiên (tiếng Việt)                                               |
+| `gold_answer`    | string        | đáp án tham chiếu (1-4 câu)                                                          |
+| `gold_citations` | list          | danh sách `{doc_id, dieu, khoan, diem?}` đúng                                        |
 
 **Phân bố:** 5 câu / category × 5 category = 25. Mỗi câu có 1–4 gold citation (trung bình 1.8).
 
@@ -1408,6 +1421,7 @@ $$
 với $\operatorname{rel}(r_i) = 1$ nếu $r_i$ khớp gold, ngược lại 0 (binary relevance).
 
 **Khác biệt vs Recall@k:**
+
 - Recall đếm số hit, bỏ qua vị trí.
 - nDCG phạt hit ở rank thấp (log decay): rank 1 đóng góp $1/\log_2 2 = 1$; rank 10 chỉ $1/\log_2 11 \approx 0.29$.
 
@@ -1434,6 +1448,7 @@ $$
 $$
 
 **Ví dụ:** $P = $ "phạt 4 triệu đồng", $G = $ "phạt từ 4 đến 6 triệu đồng".
+
 - Tokens $P$ = `[phạt, 4, triệu, đồng]`, $|P| = 4$.
 - Tokens $G$ = `[phạt, từ, 4, đến, 6, triệu, đồng]`, $|G| = 7$.
 - common = `phạt` + `4` + `triệu` + `đồng` = 4.
@@ -1465,6 +1480,7 @@ với $\beta = 1.2$ (mặc định Lin 2004 — hơi ưu tiên recall). Báo cá
 **LCS được tính O(|P|·|G|) bằng DP 1 chiều** (xem [research/utils/metrics.py:68-81](../research/utils/metrics.py#L68-L81)).
 
 **Khác biệt F1 vs ROUGE-L:**
+
 - F1 xem token như bag-of-words (không thứ tự).
 - ROUGE-L phạt đảo thứ tự: "phạt trừ điểm" ≠ "trừ điểm phạt" sẽ có LCS ngắn hơn.
 
@@ -1489,6 +1505,7 @@ $$
 **Edge case:** nếu `pred == gold == []` (câu từ chối hợp lệ cho out-of-scope) → $(P, R, F1) = (1, 1, 1)$. Nếu `pred == []` nhưng `gold ≠ []` → $(0, 0, 0)$.
 
 **Cấp độ có thể đổi** qua tham số `level`:
+
 - `level="doc_id"` — chỉ so văn bản (dùng cho RQ2 fixed-512 khi khoản không đáng tin).
 - `level="khoan"` — **mặc định production**.
 - `level="diem"` — khắt khe nhất (dùng cho future work).
@@ -1561,16 +1578,16 @@ $\operatorname{cos}(\hat{\mathbf{a}}, \hat{\mathbf{b}}) = \hat{\mathbf{a}}\cdot\
 
 ### 10.9 Tóm tắt: metric nào cho câu hỏi nào?
 
-| Muốn đo | Metric | Công thức | Khi nào quan trọng |
-|---|---|---|---|
-| Hệ thống có kéo đúng khoản lên không? | **MRR, Recall@k** | §10.3 | Debug retriever |
-| Hệ thống có sắp đúng khoản ở top không? | **nDCG@k** | §10.3.3 | So sánh reranker |
-| Câu trả lời có từ khoá đúng không? | **Token-F1** | §10.4.1 | QA span-style |
-| Câu trả lời có giữ cấu trúc không? | **ROUGE-L** | §10.4.2 | Summarization |
-| Generator có trích đúng nguồn không? | **Cit-P/R/F1** | §10.5 | **Quan trọng nhất cho pháp lý** |
-| Hệ thống có bịa không? | **Refusal + Cit-R** đi chung | §10.6.1 | Hallucination audit |
-| Routing có đúng không? | **Category Acc** | §10.6.2 | Agentic workflow |
-| Ngân sách token? | **tokens, cost** | §10.7 | Production planning |
+| Muốn đo                                 | Metric                       | Công thức | Khi nào quan trọng              |
+| --------------------------------------- | ---------------------------- | --------- | ------------------------------- |
+| Hệ thống có kéo đúng khoản lên không?   | **MRR, Recall@k**            | §10.3     | Debug retriever                 |
+| Hệ thống có sắp đúng khoản ở top không? | **nDCG@k**                   | §10.3.3   | So sánh reranker                |
+| Câu trả lời có từ khoá đúng không?      | **Token-F1**                 | §10.4.1   | QA span-style                   |
+| Câu trả lời có giữ cấu trúc không?      | **ROUGE-L**                  | §10.4.2   | Summarization                   |
+| Generator có trích đúng nguồn không?    | **Cit-P/R/F1**               | §10.5     | **Quan trọng nhất cho pháp lý** |
+| Hệ thống có bịa không?                  | **Refusal + Cit-R** đi chung | §10.6.1   | Hallucination audit             |
+| Routing có đúng không?                  | **Category Acc**             | §10.6.2   | Agentic workflow                |
+| Ngân sách token?                        | **tokens, cost**             | §10.7     | Production planning             |
 
 ---
 
@@ -1580,11 +1597,11 @@ $\operatorname{cos}(\hat{\mathbf{a}}, \hat{\mathbf{b}}) = \hat{\mathbf{a}}\cdot\
 
 So sánh 3 chiến lược trên cùng 25 câu gold:
 
-| Pipeline | F1 | ROUGE-L | Cit-P | Cit-R | Cit-F1 | Category Acc | Latency |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Gemini only | **0.393** | **0.324** | 0.20 | 0.20 | 0.20 | — | **9.0s** |
-| Vanilla RAG | 0.194 | 0.163 | 0.221 | 0.44 | 0.237 | 0.80 | 10.1s |
-| **Agentic RAG** | 0.346 | 0.295 | 0.209 | **0.56** | 0.218 | **1.00** | 18.4s |
+| Pipeline        |        F1 |   ROUGE-L | Cit-P |    Cit-R | Cit-F1 | Category Acc |  Latency |
+| --------------- | --------: | --------: | ----: | -------: | -----: | -----------: | -------: |
+| Gemini only     | **0.393** | **0.324** |  0.20 |     0.20 |   0.20 |            — | **9.0s** |
+| Vanilla RAG     |     0.194 |     0.163 | 0.221 |     0.44 |  0.237 |         0.80 |    10.1s |
+| **Agentic RAG** |     0.346 |     0.295 | 0.209 | **0.56** |  0.218 |     **1.00** |    18.4s |
 
 ### 11.2 Diễn giải RQ1
 
@@ -1597,13 +1614,13 @@ So sánh 3 chiến lược trên cùng 25 câu gold:
 
 Từ 500 run thực trong project `Traffic-RAG-Evaluation`:
 
-| Node | Count | Mean (s) | p95 (s) | Error rate | Tokens/run | Cost/run ($) |
-|---|---:|---:|---:|---:|---:|---:|
-| LangGraph (root) | 29 | 15.89 | 57.28 | 0.00 | 28 836 | 0.00882 |
-| **legal_rag** | 20 | 10.85 | 55.03 | 0.00 | **39 749** | **0.01020** |
-| analyzer | 25 | 8.30 | 17.27 | 0.00 | 934 | 0.00038 |
-| web_search | 4 | 8.52 | 9.11 | 0.00 | 4 440 | 0.00170 |
-| chit_chat | 1 | 1.60 | — | 0.00 | 144 | 0.00009 |
+| Node             | Count | Mean (s) | p95 (s) | Error rate | Tokens/run | Cost/run ($) |
+| ---------------- | ----: | -------: | ------: | ---------: | ---------: | -----------: |
+| LangGraph (root) |    29 |    15.89 |   57.28 |       0.00 |     28 836 |      0.00882 |
+| **legal_rag**    |    20 |    10.85 |   55.03 |       0.00 | **39 749** |  **0.01020** |
+| analyzer         |    25 |     8.30 |   17.27 |       0.00 |        934 |      0.00038 |
+| web_search       |     4 |     8.52 |    9.11 |       0.00 |      4 440 |      0.00170 |
+| chit_chat        |     1 |     1.60 |       — |       0.00 |        144 |      0.00009 |
 
 ![RQ8 Latency histogram](../research/results/figures/rq8_latency_hist.png)
 ![RQ8 Node breakdown](../research/results/figures/rq8_node_breakdown.png)
@@ -1638,16 +1655,16 @@ Từ 500 run thực trong project `Traffic-RAG-Evaluation`:
 
 ### 12.2 Hướng phát triển
 
-| Ưu tiên | Mục | Dự kiến |
-|---|---|---|
-| P0 | BGE-reranker-v2 sau RRF | R@10 +5-8pt |
-| P0 | Gold dataset 200 câu | khoảng tin cậy chặt |
-| P1 | Prompt caching Gemini | −30% cost |
-| P1 | Fine-tune e5-small trên (query, khoản) pair | MRR +5pt |
-| P2 | Multi-hop reasoning (Điều A → B → C) | Cit-R cho cross-ref |
-| P2 | Judge đa model (GPT-4 + Claude + Gemini) | giảm bias |
-| P3 | Web UI React thay Streamlit | UX tốt hơn |
-| P3 | Mobile app | expose qua API gateway |
+| Ưu tiên | Mục                                         | Dự kiến                |
+| ------- | ------------------------------------------- | ---------------------- |
+| P0      | BGE-reranker-v2 sau RRF                     | R@10 +5-8pt            |
+| P0      | Gold dataset 200 câu                        | khoảng tin cậy chặt    |
+| P1      | Prompt caching Gemini                       | −30% cost              |
+| P1      | Fine-tune e5-small trên (query, khoản) pair | MRR +5pt               |
+| P2      | Multi-hop reasoning (Điều A → B → C)        | Cit-R cho cross-ref    |
+| P2      | Judge đa model (GPT-4 + Claude + Gemini)    | giảm bias              |
+| P3      | Web UI React thay Streamlit                 | UX tốt hơn             |
+| P3      | Mobile app                                  | expose qua API gateway |
 
 ---
 
@@ -1828,6 +1845,158 @@ python scripts/rq5_prompts_ablation.py
 python scripts/rq8_langsmith_pull.py
 python scripts/rq9_rewrite_ablation.py
 ```
+
+---
+
+### 13.7 Diễn giải các con số kỹ thuật — nguồn gốc và xác minh
+
+Phụ lục này tập hợp **mọi magic number** xuất hiện trong báo cáo, giải thích con số đó từ đâu ra (paper / config / đo thực nghiệm) và khi cần thì đối chiếu với trạng thái dữ liệu thực tế. Không thay đổi nội dung các mục trước; chỉ bổ sung tham chiếu.
+
+#### 13.7.1 Số lượng chunk — xác minh trực tiếp từ file
+
+Báo cáo nhắc tới hai con số:
+
+| Mốc                                 | Báo cáo nói | Tham chiếu                     |
+| ----------------------------------- | ----------: | ------------------------------ |
+| v6.0 (trước thêm TT 72/2024/TT-BCA) |   **2 705** | §5.5, §6.4.2 (bảng BM25), §4.5 |
+| v6.1 (sau thêm TT 72)               |   **2 818** | §5.5, §13.1                    |
+
+**Xác minh thực tế (tính tới 2026-04-29):**
+
+```bash
+$ wc -l traffic_rag/Data/all_chunks.jsonl
+2818 traffic_rag/Data/all_chunks.jsonl
+```
+
+→ File JSONL hiện có **đúng 2 818 dòng = 2 818 chunk**, khớp v6.1. Con số 1 705 là không có trong dữ liệu hệ thống — có thể nhầm với 2 705 (v6.0) hoặc 1 303 (file `all_chunks_fixed512.jsonl` dùng cho RQ2).
+
+**Phân tách 2 818 chunk (đếm trực tiếp từ JSONL):**
+
+| Theo loại văn bản      |  Số chunk |
+| ---------------------- | --------: |
+| `luat` (Luật)          |       516 |
+| `nghidinh` (Nghị định) |       919 |
+| `thongtu` (Thông tư)   |     1 383 |
+| **Tổng**               | **2 818** |
+
+| Theo cấp phân cấp (`level`) |  Số chunk | Ý nghĩa                                                      |
+| --------------------------- | --------: | ------------------------------------------------------------ |
+| Level 1 (Điều)              |       457 | Chunk gói nguyên 1 Điều — dùng khi Điều ngắn, không có Khoản |
+| Level 2 (Khoản)             |     1 597 | Đơn vị retrieval phổ biến nhất                               |
+| Level 3 (Điểm)              |       764 | Chỉ tách khi Khoản có Điểm a/b/c… liệt kê chế tài            |
+| **Tổng**                    | **2 818** |                                                              |
+
+| Số văn bản gốc (distinct `doc_id`) |  23 |
+| ---------------------------------- | --: |
+
+**Lưu ý nhất quán nội bộ:** §6.4.2 (bảng tham số BM25, dòng 612) vẫn để $N = 2\,705$ — đây là giá trị tại thời điểm viết §6.4.2 (v6.0, trước khi thêm TT 72). Hiện tại $N$ thực tế nạp vào BM25Okapi là **2 818**. Khi tái tạo bảng cho v7 nên đồng bộ về 2 818.
+
+#### 13.7.2 384d — chiều của vector embedding
+
+Số **384** xuất hiện ở: §1.2 (sơ đồ kiến trúc), §1.3 (tech stack), §4.1 (bảng RQ3), §4.3.1 (backbone), §4.3.2 (mean pooling), §4.4 (so sánh sbert↔e5), §5.4 (Qdrant config `VECTOR_SIZE=384`), §13.1 (changelog v6.0).
+
+**384 là gì?**
+
+- Là **kích thước hidden state** của backbone XLM-RoBERTa "small" mà `intfloat/multilingual-e5-small` kế thừa. Mỗi token sau khi qua 12 layer Transformer có hidden vector $\in \mathbb{R}^{384}$.
+- Sau **mean pooling theo attention mask** (§4.3.2), vector câu cũng nằm trong $\mathbb{R}^{384}$.
+- Sau khi **L2-normalize**, vector có $\lVert v \rVert_2 = 1$ → cosine similarity quy về dot product, lưu vào Qdrant với `Distance.COSINE`.
+
+**Tại sao quan trọng (so với 768d của sbert cũ):**
+
+- File index nhỏ hơn ~50% (384/768 = 0.5) → §4.4 và §5.5 ghi disk volume Qdrant ~13 MB cho 2 818 point.
+- Query vector serialization qua HTTP/gRPC nhanh hơn → đóng góp vào latency 13.2 ms/query (§4.1).
+- HNSW build tốn ít RAM hơn vì mỗi node lưu vector ngắn hơn.
+
+**Lưu ý:** Nếu vô tình đọc thấy "**284d**" — đó là typo. Trong toàn bộ pipeline E5-small không có dim 284; con số chính xác luôn là **384**.
+
+#### 13.7.3 max_seq = 512 — giới hạn token đầu vào của encoder
+
+Số **512** xuất hiện ở: §1.3 (tech stack), §1.4 (bảng RQ teaser), §3.1 (RQ2 fixed-size baseline), §4.1 (bảng RQ3), §4.3.3 (prefix), §4.4 (so sánh max_seq), §8.6.4 (note BM25 + dense E5).
+
+**512 là gì?**
+
+- Là **độ dài chuỗi tối đa** (đơn vị: subword token theo SentencePiece của XLM-R) mà E5-small chấp nhận trong một lần forward. Token thứ 513 trở đi sẽ bị **truncate** (cắt cụt) trước khi đi vào Transformer.
+- Đây là giới hạn **kế thừa từ kiến trúc gốc XLM-RoBERTa-base** (Conneau et al., 2020) — position embedding chỉ học cho 512 vị trí.
+- Sau prefix `"passage: "` hoặc `"query: "` (§4.3.3), số token thực sự còn lại cho nội dung là 512 − len(prefix tokens) ≈ 510. Với chunk dài 161 token (median, xem 13.7.4) thì dư rất nhiều — không bao giờ chạm trần.
+
+**Tại sao quan trọng (so với 256 của sbert / 128 của mpnet):**
+
+- §3.1 chọn fixed-512 baseline cố tình bằng max_seq để làm so sánh công bằng với hierarchical.
+- §4.4 nêu trực tiếp lợi thế: "Max seq 512 thay vì 256 (truncate khoản dài)" — Khoản pháp luật dài (vd. Điều 6 Nghị định 168/2024 liệt kê 12+ hành vi với mức phạt) có thể vượt 256 token; với E5-small thì gọn lọn trong 512.
+- §8.6.4 viện dẫn lý do tại sao Generator có thể inject context dài cho legal reasoning mà không sợ retriever dropping — vì E5 max_seq=512 đủ chứa.
+
+#### 13.7.4 Thống kê độ dài chunk (token_estimate)
+
+Trường `token_estimate` được aggregator ghi vào metadata mỗi chunk (xem §2.4). Đếm trực tiếp trên 2 818 chunk:
+
+| Thống kê |   Giá trị |
+| -------- | --------: |
+| min      |    **50** |
+| median   |   **161** |
+| mean     | **241.6** |
+| max      | **5 803** |
+
+**Diễn giải:**
+
+- **min = 50:** đúng ngưỡng floor được aggregator áp dụng để loại tiêu đề rỗng (§2.4 ngưỡng filter chunk quá ngắn).
+- **median = 161:** đại diện cho 1 Khoản trung bình — thấp hơn rõ rệt so với max_seq=512, xác nhận "không bao giờ chạm trần encoder" cho phần lớn payload.
+- **max = 5 803:** chunk dài ngoại lệ (Điều 6 NĐ 168/2024 hoặc tương tự liệt kê dài). Khi encode bằng E5-small, chunk này **bị truncate xuống 512 token** → mất ~88% nội dung cuối. Đây là **cảnh báo ẩn**: nên cân nhắc tách Level 2 thành Level 3 cho các Khoản loại liệt kê dài, hoặc chuyển sang encoder max_seq lớn hơn ở v7.
+- **mean (241) vs giá trị 187 trong §6.4.2 (BM25 ví dụ):** số 187 ở §6.4.2 là **giá trị minh hoạ** dùng giải thích công thức BM25, không phải avg đo thực tế. Avg thực tế là 241 token.
+
+#### 13.7.5 BM25Okapi: $k_1 = 1.5$, $b = 0.75$
+
+Xuất hiện: §6.4.2.
+
+- **$k_1 = 1.5$** — mặc định khuyến nghị của Okapi BM25 (Robertson & Zaragoza, "The Probabilistic Relevance Framework"). Khoảng [1.2, 2.0] thường ổn cho văn bản tiếng Việt có từ khóa lặp; 1.5 là điểm giữa.
+- **$b = 0.75$** — chuẩn cộng đồng IR (Lucene/Elasticsearch dùng cùng giá trị). $b=0.75$ phạt độ dài "vừa phải", phù hợp khi chunk có độ dài lệch lớn (xem 13.7.4: min 50 vs max 5 803).
+
+Hai tham số này được set khi khởi tạo `BM25Okapi(corpus, k1=1.5, b=0.75)`. Chưa fine-tune trên corpus Traffic-RAG — đây là **hạng mục v7 đáng làm** (grid search trên 25 gold query của RQ2/RQ9).
+
+#### 13.7.6 RRF: $k = 60$
+
+Xuất hiện: §6.4.3, [retriever.py:76](../source/rag_core/retriever.py#L76) (`rrf_k: int = 60`).
+
+- **60** là giá trị mặc định Cormack et al. 2009 đề xuất trong paper gốc _"Reciprocal Rank Fusion outperforms Condorcet and individual Rank Learning Methods"_ (SIGIR 2009).
+- Trực giác: $k$ làm "soft-cap" cho top rank — với rank 1 → $1/(60+1) = 0.0164$, rank 10 → $1/(60+10) = 0.0143$. Khoảng cách tương đối giữa rank 1 và rank 10 chỉ là 1.14×; RRF cố tình **làm phẳng** để 1 list không "đè" list kia chỉ vì 1 hit may mắn ở top.
+- Stable cho corpus < 10 000 doc theo Cormack — corpus Traffic-RAG (2 818 chunk) nằm an toàn trong khoảng đó nên không cần điều chỉnh.
+
+#### 13.7.7 Các metric kết quả cốt lõi (RQ3 winner)
+
+Bảng §4.1 nêu E5-small thắng với:
+
+| Metric             |   Giá trị | Đo bằng                                          |
+| ------------------ | --------: | ------------------------------------------------ |
+| MRR                | **0.220** | gold 25 query × top-10 (xem §10.3.2)             |
+| Recall@5           |  **0.40** | §10.3.1,$k=5$                                    |
+| Recall@10          |  **0.46** | §10.3.1,$k=10$                                   |
+| Encode corpus (s)  | **333.4** | đo trên CPU x86, 2 705 chunk × 384 dim, batch 32 |
+| Query latency (ms) |  **13.2** | trung bình 25 query, không kể truyền HTTP        |
+
+Lưu ý: thời điểm chạy RQ3 corpus có 2 705 chunk (trước TT 72). Sau khi thêm 113 chunk lên 2 818, encode time mới (§5.5) là **~350 s** — tăng ~5%, đúng tỉ lệ với (2 818/2 705 − 1) ≈ 4.2%.
+
+#### 13.7.8 Tổng hợp "magic number" và nguồn
+
+| Con số      | Vai trò                     | Nguồn / quyết định bởi                                        |
+| ----------- | --------------------------- | ------------------------------------------------------------- |
+| 384         | embedding dim               | kiến trúc XLM-R-small (model card E5-small)                   |
+| 512         | max_seq encoder             | position embedding XLM-R-base, kế thừa BERT                   |
+| 2 818       | tổng chunk hiện tại         | đếm `wc -l Data/all_chunks.jsonl` (v6.1)                      |
+| 2 705       | tổng chunk cũ               | snapshot trước khi thêm TT 72/2024/TT-BCA                     |
+| 113         | chunk thêm vào v6.1         | TT 72/2024/TT-BCA, 29 Điều, §5.5                              |
+| 1 303       | tổng chunk fixed-512        | `wc -l Data/all_chunks_fixed512.jsonl`, dùng cho RQ2 baseline |
+| 23          | số văn bản gốc              | đếm distinct `doc_id` trong JSONL                             |
+| 1.5 / 0.75  | BM25$k_1, b$                | mặc định Okapi (Robertson & Zaragoza)                         |
+| 60          | RRF$k$                      | mặc định Cormack et al. SIGIR 2009                            |
+| 10          | top_k retrieval             | thiết lập `TrafficHybridRetriever`, §6.4                      |
+| 8           | top_k Qdrant search         | hạt giống dense leg trước khi enrich/cross-ref                |
+| ±2          | sibling enrichment          | quy ước "khoản kề" — §6.4.4                                   |
+| 0.220       | MRR E5-small                | RQ3, §4.1                                                     |
+| 14          | số rules trong prompt P2    | §7.4 (cập nhật v6.1 thêm Quy tắc 14)                          |
+| 25          | gold query đánh giá         | tập eval cố định, dùng chung cho RQ2/RQ3/RQ9                  |
+| 6334 → 6333 | port mapping Qdrant         | `docker-compose.yml` (host 6334 → container HTTP 6333)        |
+| 8000 / 8003 | port FastAPI local / Docker | uvicorn vs container `traffic_rag_backend`                    |
+
+> **Quy ước:** mọi con số kỹ thuật mới đưa vào báo cáo v7 nên được liệt kê tại bảng này kèm cột "Nguồn / quyết định bởi" để tránh "magic number" không có dấu vết nguồn.
 
 ---
 

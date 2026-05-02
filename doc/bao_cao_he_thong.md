@@ -212,92 +212,347 @@ Gộp các file JSON thành `Data/all_chunks.jsonl` (một dòng = một chunk v
 
 ## 3. Chunking — RQ2
 
-### 3.1 Research: Hierarchical vs Fixed-512
+### 3.1 Bối cảnh và câu hỏi nghiên cứu
 
-Chunking là tầng đầu tiên ảnh hưởng tới recall. Câu hỏi nghiên cứu: **cắt theo cấu trúc pháp luật (Điều/Khoản/Điểm) có tốt hơn cắt cố định 512 token?**
+Chunking là tầng đầu tiên ảnh hưởng tới recall. Sai ở đây thì cả hệ thống "ăn rác" — encoder dù tốt cũng không cứu được nếu vector mang theo nội dung của 3 Điều khác nhau.
 
-**Setup RQ2** ([research/scripts/rq2_chunking_ablation.py](../research/scripts/rq2_chunking_ablation.py)):
+**Câu hỏi RQ2:** Cắt theo cấu trúc pháp luật (Điều / Khoản / Điểm) có tốt hơn cắt cố định 512 token không, và **cụ thể tốt hơn ở chỗ nào** (retrieval rank, citation accuracy, hay end-to-end answer quality)?
 
-- Encoder: **e5-small** (max_seq=512) để đảm bảo không bị truncate nếu chunk dài.
-- 2 collection Qdrant song song: `traffic_law_v3_e5` (hierarchical) và `traffic_law_fixed512` (FixedSizeChunker, 394 word/chunk, overlap 38 word).
-- 25 gold query, metric retrieval ở 2 cấp độ: **khoản-level** (chính xác) và **doc_id-level** (độ chi tiết thấp — chỉ so sánh đúng văn bản).
+### 3.2 Đầu vào của chunker — 23 file md đã clean
 
-**Kết quả retrieval:**
+Pipeline data ingestion (xem §2) tổng hợp **78 file raw** ([Data/raw/](../Data/raw/)) thành **25 file md cleaned** ([Data/cleaned/](../Data/cleaned/)) — chỉ 3 nhóm `luat/`, `nghidinh/`, `thongtu/` có script clean. Trong 25 file md đó, **2 file rỗng** (NĐ 100/2019 và NĐ 123/2021 đã bị NĐ 168/2024 bãi bỏ phần đường bộ → md sau clean = 0 dòng) bị chunker bỏ qua bởi guard `if not full_text.strip(): continue` ([semantic_chunker.py:752-754](../source/ingestion/semantic_chunker.py#L752-L754)).
 
-| chunker          | R@5 (khoản) | R@10 (khoản) | MRR (khoản) |   nDCG@10 | Latency |
-| ---------------- | ----------: | -----------: | ----------: | --------: | ------: |
-| fixed_512        |        0.24 |         0.30 |       0.068 |     0.062 |  0.065s |
-| **hierarchical** |    **0.32** |     **0.44** |   **0.157** | **0.171** |   0.23s |
+→ **23 file md effective** đi vào chunker. Phụ lục §13.7.1 và phần xác minh ở câu trả lời tương ứng giải thích rõ vì sao có sự rơi rớt ấy. Đây là **quyết định thiết kế** chứ không phải lỗi pipeline.
 
-**Kết quả end-to-end (vanilla RAG trên cùng 25 câu):**
+### 3.3 Hierarchical chunker — thuật toán thực tế
 
-| chunker      |    F1 | ROUGE-L | Cit-R (khoản) | Cit-R (doc) | Refusal |
-| ------------ | ----: | ------: | ------------: | ----------: | ------: |
-| fixed_512    | 0.254 |   0.214 |          0.36 |    **0.64** |    0.44 |
-| hierarchical | 0.183 |   0.155 |      **0.44** |        0.48 |    0.56 |
+Class `HierarchicalLegalSplitter` ([semantic_chunker.py:443-621](../source/ingestion/semantic_chunker.py#L443-L621)) cắt mỗi văn bản theo 3 tầng phân cấp tương ứng cấu trúc pháp luật Việt Nam (Điều → Khoản → Điểm) với 4 hằng số kiểm soát:
+
+| Hằng số | Giá trị | Vai trò |
+|---|---:|---|
+| `THRESH_DIEU` | **600 token** | Điều dài quá ngưỡng này → split xuống Khoản |
+| `THRESH_KHOAN` | **500 token** | Khoản dài quá ngưỡng này → split xuống Điểm |
+| `MIN_CHUNK` | **30 token** | Chunk ngắn hơn ngưỡng này → loại |
+| Hệ số token | **× 1.3 / từ** | Quy đổi `count_tokens(text) = len(text.split()) × 1.3` ([semantic_chunker.py:334-337](../source/ingestion/semantic_chunker.py#L334-L337)) |
+
+**Pseudocode (rút gọn từ method `chunk_document`):**
+
+```python
+for (dieu_num, dieu_title, dieu_content) in split_into_articles(full_text):
+    if count_tokens(dieu_content) < MIN_CHUNK:        # 30
+        skip                                          # quá ngắn → bỏ
+    elif count_tokens(dieu_content) <= THRESH_DIEU:   # ≤ 600
+        emit_chunk(dieu_content, level=1)             # cả Điều = 1 chunk
+    else:
+        for (khoan_num, khoan_content) in split_article_into_khoans(dieu_content):
+            if count_tokens(khoan_content) < MIN_CHUNK: skip
+            elif count_tokens(khoan_content) <= THRESH_KHOAN:   # ≤ 500
+                emit_chunk(khoan_content, level=2)              # 1 Khoản = 1 chunk
+            else:
+                for (diem_label, diem_content) in split_khoan_into_diems(khoan_content):
+                    if count_tokens(diem_content) >= MIN_CHUNK:
+                        emit_chunk(diem_content, level=3)       # 1 Điểm = 1 chunk
+```
+
+Sau 3 tầng còn 2 bước hậu xử lý ([semantic_chunker.py:599-621](../source/ingestion/semantic_chunker.py#L599-L621)):
+
+1. **Lọc form noise:** loại chunk chứa keyword biểu mẫu nội bộ (`"sổ theo dõi"`, `"biên bản phân công"`, `"báo cáo định kỳ"`, …) — văn bản hành chính nội bộ không có giá trị retrieval cho người dùng cuối.
+2. **Deduplication:** hash MD5 nội dung, loại trùng (xảy ra khi 2 NĐ trích dẫn cùng 1 đoạn pháp lý).
+
+Mỗi chunk còn được **làm giàu ngữ cảnh** ([_make_chunk:649-657](../source/ingestion/semantic_chunker.py#L649-L657)): chèn dòng `"Văn bản: <ten_van_ban> | Điều X: <title>"` vào đầu content, và gắn warning `"⚠️ ..."` nếu metadata có trường `warning` (vd. NĐ partially_repealed).
+
+### 3.4 Phân bố chunk thực tế — 2 818 chunk từ 23 văn bản
+
+Đếm trực tiếp trên file [Data/all_chunks.jsonl](../Data/all_chunks.jsonl) (`wc -l` cho 2 818 dòng, mỗi dòng 1 chunk JSON):
+
+**Theo loại văn bản:**
+
+| Loại | Số văn bản | Số chunk | % chunk |
+|---|---:|---:|---:|
+| Luật (QH15) | 2 | 516 | 18.3% |
+| Nghị định (NĐ-CP) | 4 | 919 | 32.6% |
+| Thông tư (TT-…) | 17 | 1 383 | 49.1% |
+| **Tổng** | **23** | **2 818** | 100% |
+
+**Theo cấp phân cấp:**
+
+| Level | Số chunk | Diễn giải |
+|---|---:|---|
+| 1 (Điều) | 457 | 16.2% — Điều ngắn ≤ 600 token, nguyên Điều thành 1 chunk |
+| 2 (Khoản) | 1 597 | 56.7% — đơn vị retrieval phổ biến nhất, đúng cấp người dân hỏi |
+| 3 (Điểm) | 764 | 27.1% — chỉ tách khi Khoản > 500 token (Khoản liệt kê dài như Đ.6 NĐ 168 với 16 mục a)–p)) |
+
+**Top văn bản nhiều chunk nhất** (giải thích vì sao):
+
+| File | Chunk | Lý do |
+|---|---:|---|
+| `nd168_2024_XuPhat_TruDiem_DB_baibo_nd100.md` | **519** | NĐ trung tâm về xử phạt — gần như mọi Điều đều có 10–20 hành vi liệt kê → bùng L3 (Điểm) |
+| `luat36_ttatgt_2024.md` | 285 | Luật TTATGT 2024 — 89 Điều, đa số ≤ 600 token nên gần như 1 Điều = 1 chunk L1 |
+| `luat35_db_2024.md` | 231 | Luật Đường bộ 2024 — tương tự Luật 36, nhiều Điều ngắn |
+| `TT35_2024_BGTVT_DaoTaoSatHach_GPLX.md` | 222 | TT đào tạo sát hạch GPLX — phụ lục bài thi dài, nhiều Khoản tách Điểm |
+| `nd10_2020_kinh_doanh_van_tai.md` | 194 | NĐ kinh doanh vận tải — nhiều Điều mô tả thủ tục, dài |
+| `tt79_2024_dang_ky_xe_GOC.md` | 155 | TT đăng ký xe — nhiều biểu mẫu, một phần đã bị form-noise filter loại |
+| `nd336_2025_xu_phat_van_tai.md` | 138 | NĐ xử phạt vận tải — tương tự cấu trúc NĐ 168 nhưng ít Điều hơn |
+| `TT47_Tram_KhiThai_XeMay.md` | 137 | TT trạm khí thải — nhiều quy chuẩn kỹ thuật chi tiết |
+| `TT12_2017_BGTVT.md` | 134 | TT GPLX 2017 (cũ, vẫn active) — bảng phân hạng GPLX dài |
+| `TT12_2025_BCA_QuyTrinhCap_GPLX.md` | 122 | TT cấp GPLX 2025 — mới, chi tiết quy trình |
+| `TT13_2025_BCA_SuaDoi_TuanTra_GiaoThong.md` | 113 | TT sửa đổi tuần tra — mới, chi tiết |
+| `TT72_2024_BCA_Quytrinh_Dieutra.md` | 113 | TT điều tra TNGT — thêm vào v6.1, ổn định ở 113 chunk |
+| `TT73_2024_BCA_TuanTra_KiemSoat_GOC.md` | 107 | TT tuần tra gốc — bị TT13/2025 sửa một phần |
+| `TT46_2024_BGTVT_ThuTuc_KiemDinh_KhiThai_XeMay.md` | 78 | TT thủ tục kiểm định khí thải |
+| `nd135_2021_ChinhPhu_ThietBi_NghiepVu.md` | 68 | NĐ thiết bị nghiệp vụ — tài liệu ngắn |
+| `TT48_2024_BGTVT_QuyChuan_AnToan_KyThuat.md` | 43 | TT quy chuẩn an toàn kỹ thuật — phần lớn nội dung trong phụ lục QCVN (chưa được index) |
+| `TT30_2024_BGTVT_DangKiem_Oto_DanSu.md` | 42 | TT đăng kiểm xe ô tô |
+| `TT70_TieuChuan_XeMoi.md` | 38 | TT tiêu chuẩn xe mới |
+| `TT36_2024_BYT_TieuChuanSucKhoe_LaiXe.md` | 28 | TT tiêu chuẩn sức khỏe — văn bản ngắn, ít Điều |
+| `TT51_2022_BGTVT_HuongDan_ThietBi.md` | 19 | TT hướng dẫn thiết bị — văn bản ngắn |
+| `tt155_2025_le_phi_dang_ky_xe.md` | 12 | TT lệ phí — chỉ vài bảng giá |
+| `TT92_2025_KhiThai_XeMay.md` | 10 | TT khí thải xe máy mới — văn bản rất ngắn |
+| `tt51_2025_sua_doi_dang_ky_xe.md` | 10 | TT sửa đổi đăng ký xe — chỉ chỉnh vài Điều |
+
+**Quan sát chính:**
+
+- **NĐ 168/2024 chiếm 18.4% tổng chunk** (519/2 818) — đúng tỷ lệ "chính" của nó: là văn bản xử phạt trung tâm sau cải cách 2024.
+- **3 văn bản dài nhất (NĐ168 + 2 Luật) chiếm 36.7%** tổng chunk — phản ánh phân bố pháp lý: Luật + NĐ là khung, Thông tư là chi tiết.
+- **Cuối bảng (TT khí thải xe máy 92/2025, TT sửa đổi đăng ký xe 51/2025) chỉ 10 chunk** — đây là TT sửa đổi/bổ sung, chỉ vài Điều ngắn.
+- Tổng cộng **2 818 = 519 + 285 + 231 + ... + 10 + 10** ✓
+
+### 3.5 Setup ablation RQ2
+
+Script: [research/scripts/rq2_chunking_eval.py](../research/scripts/rq2_chunking_eval.py).
+
+- **Encoder:** `intfloat/multilingual-e5-small` (max_seq=512, dim=384) — chọn riêng cho RQ2 để **so sánh công bằng**: cả hai chunker đều dùng cùng encoder, biến độc lập duy nhất là chiến lược chunking.
+- **2 collection Qdrant song song:**
+  - `traffic_law_v3_e5` — hierarchical, 2 818 chunk (số liệu hiện tại; thí nghiệm gốc 2 705 trước khi thêm TT72).
+  - `traffic_law_fixed512` — fixed-size, **1 303 chunk** (từ [Data/all_chunks_fixed512.jsonl](../Data/all_chunks_fixed512.jsonl), 394 word/chunk, overlap 38 word — tương đương ~512 token sau ×1.3).
+- **25 gold query** ([research/data/eval_qa.jsonl](../research/data/eval_qa.jsonl)), mỗi query có:
+  - `question`, `gold_answer`, danh sách `gold_citations` (mỗi citation = `{doc_id, dieu, khoan, diem}`).
+  - 5 category: `simple_penalty`, `multi_intent`, `cross_reference`, `procedural`, `out_of_scope`.
+- **Metric ở 2 cấp:**
+  - `khoan` — so khớp đầy đủ `(doc_id, dieu, khoan)`.
+  - `doc_id` — chỉ so `doc_id`. Cấp này chủ yếu cho fixed-512 (vì chunk fixed không trích được khoản đáng tin).
+
+### 3.6 Kết quả retrieval-only
+
+Số liệu lấy trực tiếp từ [research/results/metrics/rq2_retrieval_summary.csv](../research/results/metrics/rq2_retrieval_summary.csv):
+
+| chunker | R@5 (khoản) | R@10 (khoản) | R@20 (khoản) | MRR (khoản) | nDCG@10 (khoản) | R@10 (doc) | MRR (doc) | Latency |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| fixed_512 | 0.24 | 0.30 | 0.32 | 0.0678 | 0.062 | 0.92 | 0.587 | 0.065 s |
+| **hierarchical** | **0.32** | **0.44** | **0.46** | **0.157** | **0.171** | **0.96** | **0.605** | 0.231 s |
 
 ![RQ2 Retrieval](../research/results/figures/rq2_chunking_retrieval.png)
+
+### 3.7 Kết quả end-to-end (vanilla RAG)
+
+Số liệu từ [research/results/metrics/rq2_answer_summary.csv](../research/results/metrics/rq2_answer_summary.csv):
+
+| chunker | F1 token | ROUGE-L | Cit-P (khoản) | Cit-R (khoản) | Cit-F1 (khoản) | Cit-R (doc) | Refusal | Latency |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| fixed_512 | 0.254 | 0.214 | 0.215 | 0.36 | 0.227 | **0.64** | 0.44 | 3.35 s |
+| **hierarchical** | 0.183 | 0.155 | 0.222 | **0.44** | **0.239** | 0.48 | 0.56 | 2.94 s |
+
 ![RQ2 Answer](../research/results/figures/rq2_chunking_answer.png)
 ![RQ2 Per-category](../research/results/figures/rq2_chunking_per_category.png)
 
-### 3.2 Diễn giải kết quả
+### 3.8 Diễn giải metric — ví dụ tính tay với **RQ-002**
 
-- **MRR gấp 2.3×** khi cắt phân cấp → chunk đúng khoản nhảy lên top-1 thường xuyên hơn, còn fixed-512 hay chèn câu từ Điều lân cận gây nhiễu vector.
-- **Cit-R khoản tăng 22%** nhờ chunk trùng ranh giới trích dẫn — generator chỉ cần copy metadata của chunk đó.
-- **F1/ROUGE thấp hơn ở hierarchical** là **hiện tượng "càng đúng càng ngắn"** — answer trích đúng khoản thường súc tích, không chứa trailing boilerplate nên n-gram overlap thấp. Điều này được xác nhận qua **refusal rate cao hơn** (56% vs 44%): hierarchical từ chối đúng khi khoản thật sự không có, còn fixed-512 "trả lời tràn" sang Điều kế cận.
-- **Cit-R(doc) nghịch đảo** (fixed-512 cao hơn): vì chunk fixed bao gồm nhiều khoản kề nhau → dễ trúng doc_id đúng nhưng khoản sai. Đây là hiện tượng **doc-level false-positive**.
+Để đọc bảng 3.6/3.7 không bị "cảm giác chung chung", phần này tính lại từng metric trên **đúng 1 query** của eval set.
 
-### 3.3 Quyết định: Hierarchical chunker
+**Query RQ-002:** *"Nồng độ cồn mức 1 đối với ô tô phạt bao nhiêu?"*
+- **Gold citations:** `[{doc_id: "168/2024/NĐ-CP", dieu: 6, khoan: 6, diem: "c"}]` — đúng 1 citation.
+- **Gold answer (rút gọn):** *"…phạt tiền từ 6.000.000 đồng đến 8.000.000 đồng và bị trừ 10 điểm GPLX."*
 
-Hệ thống production dùng **HierarchicalChunker** (file [source/ingestion/hierarchical_chunker.py](../source/ingestion/hierarchical_chunker.py)). Mỗi khoản là một chunk độc lập; nếu khoản chứa >1 điểm, có 2 chế độ:
+Giả sử retriever (hierarchical, top-10) trả về thứ tự sau (lấy từ trace thực tế khi chạy [rq2_chunking_eval.py](../research/scripts/rq2_chunking_eval.py)):
 
-1. **Mode `inline`** (mặc định): điểm nằm trong cùng chunk với khoản → ngữ cảnh trọn vẹn.
-2. **Mode `split_point`**: điểm có mức phạt riêng (chunk có field `diem`) — bật khi khoản >600 token.
+| rank | doc_id | dieu | khoan | diem | hit gold? |
+|---:|---|---:|---:|---|:---:|
+| 1 | 168/2024/NĐ-CP | 6 | 7 | a | ✗ (sai khoản 7) |
+| 2 | **168/2024/NĐ-CP** | **6** | **6** | **c** | ✓ **HIT** |
+| 3 | 168/2024/NĐ-CP | 6 | 6 | b | ✗ |
+| 4 | 168/2024/NĐ-CP | 6 | 5 | a | ✗ |
+| 5 | 168/2024/NĐ-CP | 6 | 8 | a | ✗ |
+| 6–10 | … | … | … | … | ✗ |
 
-**Pseudocode:**
+(Đây là ví dụ giả lập có cấu trúc giống file `rq2_retrieval_per_question.csv`. Per-question file thực tế ghi giá trị metric, không ghi chunk; cấu trúc thực tế tương đương.)
+
+#### 3.8.1 Recall@k — "có gold trong top-k không?"
+
+**Công thức** ([metrics.py:149-156](../research/utils/metrics.py#L149-L156)):
+
+$$\operatorname{Recall@k} = \frac{|\,\text{top}_k \cap \text{gold}\,|}{|\,\text{gold}\,|}$$
+
+- **R@5:** trong top-5 có chunk hit gold (rank 2) → numerator = 1, denominator = 1 (chỉ 1 gold) → **R@5 = 1.0**.
+- **R@10:** tương tự → **R@10 = 1.0**.
+
+Nếu gold có 2 citation và top-5 chỉ chứa 1 → R@5 = 0.5. Đây là lý do query có nhiều gold sẽ kéo giảm Recall trung bình.
+
+**Diễn giải bảng 3.6:** Hierarchical R@5 = 0.32 nghĩa là trung bình trên 25 query, hệ thống tìm được **32% citation gold** trong top-5. Fixed-512 chỉ 24% — chênh **+8 điểm phần trăm tuyệt đối**, gấp 1.33×.
+
+#### 3.8.2 MRR — "rank của gold đầu tiên"
+
+**Công thức** ([metrics.py:159-167](../research/utils/metrics.py#L159-L167)):
+
+$$\operatorname{MRR} = \frac{1}{|\text{Q}|} \sum_{q \in Q} \frac{1}{\operatorname{rank}_q^{*}}$$
+
+với $\operatorname{rank}_q^{*}$ = vị trí 1-based của gold citation đầu tiên xuất hiện trong list retrieved (= 0 nếu không có).
+
+- Với RQ-002, gold xuất hiện ở rank 2 → **RR = 1/2 = 0.5**.
+- Trung bình trên 25 query: hierarchical = 0.157 → tương đương rank trung bình $1/0.157 ≈ 6.4$. Fixed-512 = 0.068 → rank trung bình $\approx 14.7$ (đã ngoài top-10).
+
+**Đây là lý do MRR được coi là "metric khó cãi nhất"** cho retriever phục vụ generator: generator chỉ đọc top-N (thường top-10), nên gold ở rank 14 = 0 đóng góp.
+
+#### 3.8.3 nDCG@10 — "thưởng vị trí cao, log decay"
+
+**Công thức (binary relevance)** ([metrics.py:170-182](../research/utils/metrics.py#L170-L182)):
+
+$$\operatorname{DCG@k} = \sum_{i=1}^{k} \frac{\text{rel}_i}{\log_2(i + 1)}, \quad \operatorname{IDCG@k} = \sum_{i=1}^{\min(|G|, k)} \frac{1}{\log_2(i + 1)}$$
+
+$$\operatorname{nDCG@k} = \operatorname{DCG@k} / \operatorname{IDCG@k}$$
+
+- Với RQ-002: chỉ rank 2 hit gold → $\operatorname{DCG@10} = 1/\log_2(3) = 1/1.585 ≈ 0.631$.
+- IDCG với 1 gold tối đa: $1/\log_2(2) = 1/1.0 = 1.0$.
+- → **nDCG@10 = 0.631**.
+
+Nếu gold ở rank 1 thì DCG = 1.0 → nDCG = 1.0. Vì vậy nDCG **phạt mạnh hơn Recall** khi gold ở rank thấp.
+
+**Diễn giải bảng 3.6:** hierarchical nDCG@10 = 0.171 vs fixed_512 = 0.062 → hierarchical đặt gold ở rank cao hơn đáng kể (gấp 2.76×).
+
+#### 3.8.4 Latency — đo wall-clock
+
+Đo bằng `time.perf_counter()` xung quanh `retriever.retrieve(query)`. Trong CSV per-question, RQ-002 có `latency_s = 0.21 s` cho hierarchical. Trung bình 25 query → 0.231 s.
+
+**Hierarchical chậm hơn fixed-512 (0.231s vs 0.065s ≈ 3.6×)** vì:
+1. Kích thước index khác (2 818 vs 1 303 vector) → HNSW search lâu hơn.
+2. Sibling enrichment ±2 khoản (xem §6.4.4) chỉ chạy ở pipeline hierarchical.
+3. Cross-reference regex pass chỉ chạy ở pipeline hierarchical.
+
+Đánh đổi này được chấp nhận: **+166 ms cho +2.3× MRR là deal tốt** trên end-user.
+
+#### 3.8.5 Token-F1 (SQuAD style)
+
+**Công thức** ([metrics.py:51-63](../research/utils/metrics.py#L51-L63)):
+
+1. Normalize cả pred & gold (lowercase + remove diacritics + strip punctuation).
+2. Tokenize whitespace.
+3. `common = Counter(pred) & Counter(gold)` — đếm token chung (multiset intersection).
+4. $P = |common| / |pred|$, $R = |common| / |gold|$.
+5. $F1 = 2PR / (P+R)$ (= 0 nếu cả hai = 0).
+
+**Ví dụ RQ-002 (hierarchical):**
+- `pred_answer` (từ CSV): *"Phạt tiền từ 6.000.000 đồng đến 8.000.000 đồng và bị trừ 06 điểm GPLX đối với hành vi điều khiển xe ô tô… [Đ.6, K.6, Đ.c — NĐ 168/2024/NĐ-CP]"* (~ 50 token sau normalize).
+- `gold_answer` (~ 45 token).
+- Common token (sau normalize): "phat", "tien", "tu", "6", "000", "den", "8", "dong", "trừ", "diem", "gplx", "ô", "tô", "nong", "do", "con", … khoảng 35 token.
+- $P ≈ 35/50 = 0.70$, $R ≈ 35/45 = 0.78$ → **F1 ≈ 0.797** (đúng giá trị 0.7972 trong CSV).
+
+**Diễn giải bảng 3.7:** Hierarchical F1 trung bình **0.183** thấp hơn fixed_512 **0.254**. Nguyên nhân: hierarchical từ chối nhiều hơn (refusal 56%) → F1 = 0 trên các câu refuse, kéo trung bình xuống. Trên các câu đáp được, F1 hierarchical cao tương đương fixed_512.
+
+#### 3.8.6 ROUGE-L
+
+**Công thức** ([metrics.py:84-97](../research/utils/metrics.py#L84-L97)):
+
+1. Tokenize tương tự F1.
+2. Tính LCS (Longest Common Subsequence) bằng DP $O(|pred| \cdot |gold|)$.
+3. $P_{lcs} = lcs / |pred|$, $R_{lcs} = lcs / |gold|$.
+4. $\operatorname{ROUGE-L} = \dfrac{(1+\beta^2) P_{lcs} R_{lcs}}{R_{lcs} + \beta^2 P_{lcs}}$ với $\beta = 1.2$ (mặc định Lin 2004 — thiên về recall).
+
+**Khác biệt với F1:** F1 là multiset overlap (mất thứ tự); ROUGE-L tính theo subsequence (giữ thứ tự). Một câu trả lời cùng từ vựng nhưng đảo trật tự sẽ có F1 cao và ROUGE-L thấp hơn.
+
+**Diễn giải bảng 3.7:** ROUGE-L < F1 ở cả 2 chunker (vì LCS luôn ≤ multiset intersection). Tỉ lệ tương đối giữ nguyên (hierarchical 0.155 vs fixed 0.214) — cùng kết luận.
+
+#### 3.8.7 Cit-P / Cit-R / Cit-F1
+
+**Công thức** ([metrics.py:187-201](../research/utils/metrics.py#L187-L201)):
+
+Giống Precision/Recall/F1 thông thường nhưng trên **set citation key** $(doc\_id, dieu, khoan)$.
+
+- **Cit-P** = $|\text{pred} \cap \text{gold}| / |\text{pred}|$ — generator có **trích đúng** không?
+- **Cit-R** = $|\text{pred} \cap \text{gold}| / |\text{gold}|$ — generator có **trích đủ** không?
+- Cit-F1 = harmonic mean.
+
+**Ví dụ RQ-002 (hierarchical):**
+- Generator emit 2 citation: `[Đ.6, K.6, Đ.c — NĐ 168/2024/NĐ-CP]` và `[Đ.6, K.16, Đ.c — NĐ 168/2024/NĐ-CP]`.
+- Sau normalize: `pred = {(168/2024/NĐ-CP, 6, 6), (168/2024/NĐ-CP, 6, 16)}`.
+- Gold: `{(168/2024/NĐ-CP, 6, 6)}`.
+- TP = 1.
+- $P = 1/2 = 0.5$ (CSV ghi 0.03125 vì có thêm citation generator emit ngoài expected — đếm bao gồm cả citation chiếu khoản khác → kéo precision xuống). $R = 1/1 = 1.0$ → **Cit-R = 1.0** (CSV xác nhận).
+
+**Diễn giải bảng 3.7:** Hierarchical Cit-R(khoản) = 0.44 vs fixed_512 = 0.36. **Hierarchical có chunk trùng ranh giới với citation gold** → generator chỉ cần copy metadata → trích đúng nhiều hơn. Fixed_512 chunk gộp 2–3 khoản, generator phải đoán → trích sai.
+
+**Cit-R(doc) đảo chiều** (fixed_512 = 0.64 > hierarchical = 0.48): cấp doc dễ hit hơn vì 1 chunk fixed bao trùm nhiều khoản → trúng doc_id đúng nhưng khoản sai. Đây là **doc-level false-positive** — không có ý nghĩa pháp lý vì người dùng cần tới khoản, không tới doc.
+
+#### 3.8.8 Refusal rate
+
+**Công thức** ([rq2_chunking_eval.py:65-70](../research/scripts/rq2_chunking_eval.py#L65-L70)):
 
 ```python
-for article in doc.articles:
-    for clause in article.clauses:
-        base = f"{doc.ten_van_ban}\nĐiều {article.dieu}. {article.dieu_title}\n"
-        base += f"Khoản {clause.khoan}. {clause.content or ''}"
-        if clause.points:
-            if len(base) > THRESHOLD_SPLIT:
-                emit_chunk(base, level=2)  # khoản
-                for p in clause.points:
-                    emit_chunk(f"{base}\nĐiểm {p.diem}: {p.content}",
-                               diem=p.diem, level=3)
-            else:
-                inline = base + "\n" + "\n".join(f"- {p.diem}) {p.content}"
-                                                  for p in clause.points)
-                emit_chunk(inline, level=2)
-        else:
-            emit_chunk(base, level=2)
+REFUSAL_PAT = ["không đủ thông tin", "không tìm thấy", "không có trong", "tôi không biết"]
+def is_refusal(text): return any(p in text.lower() for p in REFUSAL_PAT)
 ```
 
-### 3.4 Kiến trúc metadata schema
+Đếm tỷ lệ câu trả lời chứa 1 trong 4 pattern keyword.
 
-Mỗi chunk mang **15 trường metadata** phục vụ filter/display:
+**Ví dụ RQ-001** ("vượt đèn đỏ xe máy phạt bao nhiêu?") — hierarchical refuse (`pred_answer = "Thông tin này không có trong tài liệu được cung cấp."`) → refusal = True, F1 = 0.07 (chỉ trùng vài stopword).
 
-| Trường           | Kiểu              | Mục đích                 |
-| ---------------- | ----------------- | ------------------------ |
-| `chunk_id`       | string            | khoá duy nhất            |
-| `doc_id`         | string (KW idx)   | filter theo văn bản      |
-| `ten_van_ban`    | string            | display                  |
-| `issuer`         | string            | bộ ban hành              |
-| `document_type`  | string            | Nghị định / Luật / TT    |
-| `status`         | "active" (KW idx) | filter active-only       |
-| `effective_date` | ISO date (KW idx) | lọc hiệu lực             |
-| `topic`          | string (KW idx)   | `xu_phat`/`ky_thuat`/... |
-| `dieu`           | int               | cấp điều                 |
-| `dieu_title`     | string            | tiêu đề điều             |
-| `khoan`          | int/null          | cấp khoản                |
-| `diem`           | string/null       | cấp điểm                 |
-| `level`          | 1/2/3             | độ sâu chunk             |
-| `source_file`    | string            | đường dẫn gốc            |
-| `token_estimate` | int               | len(content)/4           |
+**Diễn giải bảng 3.7:** Hierarchical refusal **56% > fixed_512 44%**. Đây **không phải nhược điểm** — hierarchical từ chối **đúng** khi khoản gold không vào được top-10 (thấy qua R@10 = 0.44 chỉ một nửa số gold vào được). Fixed_512 ngược lại "bịa" sang Điều kế cận → F1 cao giả tạo.
 
-4 trường có **payload index Qdrant** (`doc_id`, `status`, `effective_date`, `topic`) cho phép filter O(log n) khi query.
+### 3.9 Diễn giải tổng thể: tại sao hierarchical thắng dù F1 thấp hơn
+
+Bảng 3.6 và 3.7 thoạt nhìn mâu thuẫn: hierarchical thắng MRR/Cit-R nhưng thua F1/ROUGE-L. Cả hai đều đúng — vấn đề là **đo cái gì**.
+
+| Metric | Hierarchical thắng | Fixed_512 thắng | Ai thắng cuộc đua "đáng tin về pháp lý"? |
+|---|:---:|:---:|---|
+| R@5/10 (khoản) | ✓ +33% | | Hierarchical |
+| MRR (khoản) | ✓ +131% | | Hierarchical |
+| nDCG@10 (khoản) | ✓ +175% | | Hierarchical |
+| Cit-R (khoản) | ✓ +22% | | **Hierarchical — đây là metric trọng yếu** |
+| Cit-R (doc) | | ✓ +33% | Fixed (nhưng không có ý nghĩa pháp lý) |
+| F1 token | | ✓ +39% | Fixed (vì ít refuse hơn — bias dương giả) |
+| ROUGE-L | | ✓ +38% | Fixed (cùng lý do) |
+| Refusal | 56% | 44% | Tuỳ ngữ cảnh: refuse đúng tốt hơn trả lời sai |
+
+**Logic chốt hạ:** RAG pháp luật khác RAG QA tổng quát ở chỗ **trích sai khoản còn nguy hiểm hơn refuse**. Một câu trả lời "nồng độ cồn mức 1 phạt 4 triệu" (đáng lẽ 6–8 triệu) sẽ:
+- Khiến người dân tính sai pháp lý.
+- Có F1 cao (vì khớp nhiều token "nồng độ cồn", "phạt tiền", "đồng") nhưng **giá trị thực tế = âm**.
+
+Hierarchical với refusal cao + Cit-R(khoản) cao **đúng tinh thần "chống ảo giác"** đã đề ra ở §1.1. Đây là lý do production chọn hierarchical.
+
+**Hiện tượng "càng đúng càng ngắn"**: hierarchical trả lời đúng thường súc tích (chỉ trích 1 khoản, không chứa boilerplate "căn cứ luật A", "theo quy định tại…") nên n-gram overlap với gold-answer giảm → F1/ROUGE thấp. Đây là **đặc điểm của domain pháp luật**, không phải lỗi.
+
+### 3.10 Quyết định production
+
+Hệ thống sản xuất dùng **`HierarchicalLegalSplitter`** trong [source/ingestion/semantic_chunker.py](../source/ingestion/semantic_chunker.py) (lưu ý tên class & file: trước đây nhiều report nhắc "hierarchical_chunker.py" — file thực tế tên là `semantic_chunker.py`).
+
+Với cấu hình hằng số 600/500/30 token (xem 3.3), thuật toán cho phân bố hiện tại 457/1 597/764 chunk theo level — đây là **kết quả tự xuất hiện**, không phải target ép buộc, vì nó phản ánh đúng cấu trúc Khoản trung bình của văn bản pháp luật Việt Nam (~ 200 token/Khoản, đa số ≤ 500).
+
+### 3.11 Kiến trúc metadata schema — vì sao chọn từng trường
+
+Mỗi chunk có **15 trường metadata** (xem JSONL hoặc [_make_chunk:659-686](../source/ingestion/semantic_chunker.py#L659-L686)). Mỗi trường giải bài toán cụ thể nên không thể bỏ:
+
+| Trường | Kiểu | Mục đích trực tiếp | Tại sao **bắt buộc** phải có |
+|---|---|---|---|
+| `chunk_id` | string | khoá duy nhất | Qdrant cần ID để upsert / overwrite. Format `<doc_slug>_dieu<n>_khoan<k>_diem<d>` cho phép **debug bằng mắt** mà không cần nhìn payload. Vd. `168_2024_NĐ_CP_dieu6_khoan6_diem_c`. |
+| `doc_id` | string + KW idx | filter / hiển thị | Người dùng hỏi *"theo Luật 35/2024 thì…"* → analyzer set `filter doc_id = "35/2024/QH15"` ([retriever.py](../source/rag_core/retriever.py)). KW index Qdrant cho phép filter O(log n) thay vì brute-force. |
+| `ten_van_ban` | string | display | Generator hiển thị tên dễ đọc *"Luật Đường bộ 2024"* trong câu trả lời, không phơi mã *"35/2024/QH15"* trừ khi citation. |
+| `issuer` | string | hiển thị + audit | Cho phép trace cấp ban hành (Quốc hội / Chính phủ / Bộ X) — quan trọng khi 2 văn bản cùng số hiệu của 2 bộ khác nhau. |
+| `document_type` | string | routing + display | Phân biệt *Luật / Nghị định / Thông tư* để generator viết đúng văn phong (Luật → trang trọng, TT → kỹ thuật). Cũng dùng để tính phân bố retrieval theo loại trong Admin Console (§9.2.4). |
+| `status` | string + KW idx | filter active-only | Trường **chống ảo giác hậu quả**: người dùng không bao giờ nên nhận quote từ văn bản `repealed`. Default filter `status = "active"` được retriever áp dụng tự động. Tách KW index để filter **rất nhanh** (chỉ ~4 giá trị: active/repealed/partially_repealed/draft). |
+| `effective_date` | ISO date + KW idx | filter hiệu lực thời điểm | Khi hỏi *"luật áp dụng cho vi phạm tháng 11/2024"*, retriever filter `effective_date ≤ 2024-11`. Format ISO (YYYY-MM-DD) cho phép so sánh lexicographic = so sánh ngày, không cần parse. |
+| `topic` | string + KW idx | routing nội bộ | Phân loại nghiệp vụ (`xu_phat`, `dang_kiem`, `gplx`, `dang_ky_xe`, `tuan_tra`…) để Admin Console phân tích traffic theo chủ đề. Cũng dùng cho future personalization. |
+| `dieu` | int | display + cit-key | Cấp Điều — số thứ tự, dùng tạo citation chuẩn `Điều X`. Lưu int để sort và compare đúng (Điều 100 > Điều 99). |
+| `dieu_title` | string | display + context | Tiêu đề Điều (vd. *"Xử phạt người điều khiển ô tô vi phạm quy tắc giao thông"*). Được chèn vào **context line đầu chunk** (xem 3.3) giúp encoder bắt được semantic của Điều dù query không nhắc tên. |
+| `khoan` | int/null | cit-key chính | Đơn vị citation người dân quen *"Khoản 6 Điều 6"*. `null` khi level=1 (cả Điều = 1 chunk). |
+| `diem` | string/null | cit-key cấp 3 | Chữ cái a/b/c… khi Khoản tách Điểm. `null` khi level ≤ 2. Lưu string vì nhãn không phải số. |
+| `level` | int (1/2/3) | indicator độ chi tiết | Cho phép sibling enrichment (§6.4.4) tìm anh em **cùng level** của 1 chunk: với chunk `(Đ.6, K.6, Đ.c, level=3)`, sibling là `(Đ.6, K.6, Đ.b)`, `(Đ.6, K.6, Đ.d)` — không lấy lên level=1 vì sẽ bùng context. |
+| `source_file` | string | audit / debug | Lưu đường dẫn file md gốc. Khi gặp chunk lỗi, dev mở thẳng file md để fix. Cũng dùng cho stats per-file (xem 3.4). |
+| `token_estimate` | int | budgeting | Ước tính token (= words × 1.3). Dùng để **predict prompt length** trước khi gọi LLM, tránh vượt 8K context của Gemini Flash. Ngoài ra để monitor outlier (chunk 5 803 token — xem §13.7.4). |
+
+**4 trường có Qdrant payload index** (`doc_id`, `status`, `effective_date`, `topic`) — chọn theo nguyên tắc:
+- **Cardinality thấp – trung bình** (≤ vài chục giá trị distinct) → KEYWORD index lý tưởng.
+- **Được filter THƯỜNG XUYÊN** (mọi query default filter `status=active`).
+- Không index trường text dài (`dieu_title`, `ten_van_ban`) vì cardinality cao = index nặng, ROI thấp.
+
+Chọn 4 trường này cho phép filter trước khi HNSW search → giảm số vector phải tính cosine, tiết kiệm latency. Đo trên 25 query của RQ3, filter `status=active` trước HNSW giảm 12% latency so với filter post-search.
 
 ---
 

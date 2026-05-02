@@ -31,10 +31,10 @@ from rag_core.retriever import TrafficHybridRetriever  # noqa: E402
 # Config
 # ---------------------------------------------------------------------------
 QDRANT_HOST = "localhost"
-QDRANT_PORT = 6334
-COLLECTION_NAME = "traffic_law_v3_e5"
-EMBEDDING_MODEL = "intfloat/multilingual-e5-small"
-VECTOR_SIZE = 384
+QDRANT_PORT = 6333
+COLLECTION_NAME = "Traffic_Law_Hybrid"
+EMBEDDING_MODEL = "intfloat/multilingual-e5-base"
+VECTOR_SIZE = 768
 BATCH_EMBED = 64       # Encode 64 texts at a time
 BATCH_UPSERT = 100     # Push 100 points at a time
 

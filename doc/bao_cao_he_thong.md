@@ -126,90 +126,222 @@ Các ablation `research/` (chi tiết ở §3–§7 và §11) đã xác lập m�
 
 ## 2. Data Ingestion
 
-### 2.1 Tổng quan pipeline
+### 2.1 Tổng quan pipeline thực tế
 
-Ingestion gồm 3 bước chính, chạy offline, idempotent:
+Ingestion là pipeline 2 giai đoạn, chạy offline, idempotent. **Toàn bộ scripts nằm trong [source/ingestion/](../source/ingestion/)** và đều dùng `pdfplumber` để extract — không có kênh `.docx` riêng (các file `.docx` ở `Data/raw/phuluc/` chưa có pipeline xử lý, xem 2.5).
 
 ```
-.docx  →  docx_to_markdown.py  →  preprocessed/*.md
-         │
-.pdf   →  pdf_to_markdown.py   →  preprocessed/*.md
-         │
-         ▼
-          md_to_json.py          →  processed/*.json  (phân cấp Điều/Khoản/Điểm)
-          │
-          ▼
-          aggregator.py          →  Data/all_chunks.jsonl  (2 705 chunks)
+                     CLEANING (3 scripts riêng)               CHUNKING
+
+Data/raw/
+├── luat/      *.pdf  --[clean_luat_pdfs.py]-->  Data/cleaned/luat/      *.md  --+
+├── nghidinh/  *.pdf  --[clean_nghidinh_pdfs.py]-->  Data/cleaned/nghidinh/ *.md +
+├── thongtu/   *.pdf  --[clean_thongtu_pdfs.py]-->  Data/cleaned/thongtu/  *.md  +
+├── phuluc/    *.docx (CHƯA xử lý — xem 2.5)                                     |
+└── quychuan/  *.pdf  (CHƯA xử lý — xem 2.5)                                     |
+                                                                                 v
+                                                                  [semantic_chunker.py]
+                                                                                 |
+                                                                                 v
+                                                          Data/all_chunks.jsonl (§3)
 ```
 
-### 2.2 Bước 1 — .docx → Markdown
+**Bảng số file qua từng tầng (đếm thực tế ngày 2026-05-02):**
 
-**File:** [source/ingestion/docx_to_markdown.py](../source/ingestion/docx_to_markdown.py)
+| Tầng | Đường dẫn | Số file | Ghi chú |
+|---|---|---:|---|
+| Raw — Luật | `Data/raw/luat/` | 3 PDF | luat23 (2008, repealed) + luat35 + luat36 |
+| Raw — Nghị định | `Data/raw/nghidinh/` | 6 PDF | nd10, nd100, nd123, nd135, nd168, nd336 |
+| Raw — Thông tư | `Data/raw/thongtu/` | 17 PDF | 4 nhóm: banglai/dangkyxe/khithai/tuantra |
+| Raw — Phụ lục | `Data/raw/phuluc/` | 49 docx | tt12/tt13/tt35/tt48 — **chưa pipeline** |
+| Raw — Quy chuẩn | `Data/raw/quychuan/` | 3 PDF | QCVN41 + QCVN_04_2021 + TCVN_5756 — **chưa pipeline** |
+| **Tổng raw** | | **78 file** | |
+| Cleaned — Luật | `Data/cleaned/luat/` | 2 md | luat23 bị blacklist (xem 2.3) |
+| Cleaned — Nghị định | `Data/cleaned/nghidinh/` | 6 md | nd100 + nd123 → md **rỗng** sau filter mảng đường bộ |
+| Cleaned — Thông tư | `Data/cleaned/thongtu/` | 17 md | đầy đủ |
+| **Tổng cleaned** | | **25 md** | |
+| Effective vào chunker | (md có nội dung) | **23** | trừ 2 file md rỗng (nd100, nd123) |
 
-- Dùng `python-docx` đọc trực tiếp XML của `.docx`.
-- **Bảo toàn bảng** — biểu ở NĐ 168/2024 chứa mức phạt theo cột (từ, đến, tước GPLX, trừ điểm) → parse sang markdown table `| Hành vi | Phạt tiền | Tước bằng | Trừ điểm |` để embedding giữ cấu trúc.
-- **Chuẩn hoá whitespace** (`\u00a0` → space, `\u200b` xoá, xuống dòng kép → `\n`).
-- Xuất heading cấp Điều dưới dạng `## Điều 6. Tốc độ...` để bước sau regex bóc tách.
+→ **Pipeline rớt từ 78 raw xuống 23 effective**: 53 file phụ lục+quy chuẩn (chưa có script clean) + 1 file Luật 2008 (blacklist) + nội dung mảng đường bộ NĐ100/2019 + NĐ123/2021 đã bị NĐ168/2024 bãi bỏ (clean ra md rỗng → chunker `if not full_text.strip(): continue` bỏ qua).
 
-### 2.3 Bước 2 — Markdown → JSON phân cấp
+### 2.2 Cleaning script — kiến trúc chung 3 file
 
-**File:** [source/ingestion/md_to_json.py](../source/ingestion/md_to_json.py)
+3 script ([clean_luat_pdfs.py](../source/ingestion/clean_luat_pdfs.py), [clean_nghidinh_pdfs.py](../source/ingestion/clean_nghidinh_pdfs.py), [clean_thongtu_pdfs.py](../source/ingestion/clean_thongtu_pdfs.py)) chia sẻ kiến trúc 5 bước:
 
-Mỗi văn bản trở thành 1 JSON với cấu trúc 4 tầng:
+```
++-------------+    +--------------+    +--------------+    +--------------+    +--------------+
+|  Bước 1     |--->|  Bước 2      |--->|  Bước 3      |--->|  Bước 4      |--->|  Bước 5      |
+|  Mở PDF     |    |  Extract     |    |  Clean text  |    |  Format      |    |  Ghi md      |
+|  pdfplumber |    |  text+table  |    |  regex/NFC   |    |  Markdown    |    |  + warning   |
+|  per page   |    |  bbox excl.  |    |  merge dòng  |    |  hierarchy   |    |  optional    |
++-------------+    +--------------+    +--------------+    +--------------+    +--------------+
+```
+
+#### Bước 1 — Mở PDF với pdfplumber
+
+`pdfplumber.open(pdf_path)` cho từng trang một (`for page in pdf.pages`) — đủ chính xác cho text-based PDF của Cổng thông tin pháp luật. Không OCR (corpus toàn PDF số, không scan).
+
+#### Bước 2 — Extract text + table với bbox-based exclusion
+
+Vấn đề: nếu lấy `page.extract_text()` rồi `page.extract_tables()` riêng, **text trong bảng bị duplicate** — câu mức phạt xuất hiện 2 lần (một lần dạng text, một lần dạng row của table). Giải pháp ([clean_luat_pdfs.py:255-273](../source/ingestion/clean_luat_pdfs.py#L255-L273)):
 
 ```python
-{
-  "doc_id": "168/2024/NĐ-CP",
-  "ten_van_ban": "Nghị định 168/2024/NĐ-CP...",
-  "issuer": "Chính phủ",
-  "document_type": "Nghị định",
-  "ngay_ban_hanh": "2024-12-26",
-  "effective_date": "2025-01-01",
-  "status": "active",
-  "topic": "xu_phat",          # xu_phat|ky_thuat|thu_tuc|luat
-  "articles": [
-    {
-      "dieu": 6,
-      "dieu_title": "Xử phạt người điều khiển xe ô tô vi phạm quy tắc giao thông đường bộ",
-      "clauses": [
-        {
-          "khoan": 1,
-          "khoan_title": null,
-          "points": [
-            {"diem": "a", "content": "..."},
-            {"diem": "b", "content": "..."}
-          ]
-        }
-      ]
-    }
-  ]
-}
+def get_table_bboxes(page):
+    return [tbl.bbox for tbl in page.find_tables()]   # [(x0, top, x1, bottom), ...]
+
+def is_inside_table(obj, bboxes, tolerance=2.0):
+    x0, top = obj["x0"], obj["top"]
+    return any(tx0-tol <= x0 <= tx1+tol and ttop-tol <= top <= tbottom+tol
+               for (tx0, ttop, tx1, tbottom) in bboxes)
 ```
 
-**Regex cốt lõi** (trích từ `md_to_json.py`):
+Sau đó text được lọc qua `is_inside_table` trước khi append. Bảng được render riêng thành Markdown table (xem `table_to_markdown` ở [clean_luat_pdfs.py:210-249](../source/ingestion/clean_luat_pdfs.py#L210-L249)) với 2 đặc điểm:
+- **Flatten merged cells** — ô gộp chiều dọc được nhân bản xuống mọi hàng để encoder thấy đầy đủ ngữ cảnh.
+- **Escape pipe** — `|` trong nội dung được escape `\|` để không phá cú pháp Markdown.
+
+#### Bước 3 — Clean text
+
+Gọi `clean_text(raw, strategy)` ([clean_luat_pdfs.py:128-204](../source/ingestion/clean_luat_pdfs.py#L128-L204)):
+
+1. **Unicode NFC normalization** — `unicodedata.normalize("NFC", raw)` gộp diacritic về dạng compose chuẩn (vd. "ề" Unicode decomposed thành 1 codepoint compose). Bắt buộc vì các regex sau dùng dạng compose.
+2. **Lọc nhiễu page-level** — 3 regex:
+   - `RE_HEADER_NOISE` = `r"^\d{1,2}/\d{1,2}/\d{2,4},.*about:blank$"` (header browser-print "26/4/2026, ... about:blank").
+   - `RE_FOOTER_NOISE` = `r"about:blank\s+\d+/\d+|Thư viện pháp luật|Mã tra cứu"` (footer chú thích nguồn).
+   - `RE_PAGE_NUM` = `r"^(Trang\s+)?\d+(\s*/\s*\d+)?$"` (số trang đơn lẻ).
+3. **Lọc biểu mẫu** — chấm chấm dài (`\.{5,}`) thay bằng `[Cần điền thông tin]`; ô checkbox được thay bằng `[Lựa chọn]`.
+4. **Bôi đậm ngày tháng** — `r"(ngày\s+\d+\s+tháng\s+\d+\s+năm\s+\d{4})"` → `**\1**`. Mục đích: ngày hiệu lực không bị retriever bỏ qua.
+5. **LaTeX cho công thức kỹ thuật** — `\b(CO2?|HC|NOx|PM2\.5)\b` → `$$\1$$` (dùng cho TT khí thải).
+
+#### Bước 4 — Format Markdown hierarchy
+
+Quan trọng nhất cho `semantic_chunker.py` ở §3.3 nhận diện cấu trúc:
+
+| Pattern thô | Markdown đích | Tại sao |
+|---|---|---|
+| `Chương I QUY ĐỊNH CHUNG` | `# Chương I QUY ĐỊNH CHUNG` | Mức cao nhất — không cần chunk riêng nhưng làm landmark |
+| `Điều 6. Xử phạt…` | `## Điều 6. Xử phạt…` | Đúng `RE_DIEU` ở chunker → bóc tách đúng |
+| `1. Phạt tiền từ…` | giữ nguyên | `RE_KHOAN` ở chunker bắt được dạng số.+space+chữ hoa |
+| `a) Vượt đèn đỏ…` | giữ nguyên | `RE_DIEM` bắt được chữ thường + `)` |
+
+#### Bước 5 — Nối dòng bị gãy (line merging)
+
+Vấn đề kinh điển khi extract PDF: 1 câu dài bị cắt cứng theo physical line. Giải pháp 2 điều kiện AND ([clean_luat_pdfs.py:178-196](../source/ingestion/clean_luat_pdfs.py#L178-L196)):
 
 ```python
-RE_DIEU  = re.compile(r"^#{1,3}\s*Điều\s+(\d+)\s*\.\s*(.+?)$", re.MULTILINE)
-RE_KHOAN = re.compile(r"^(\d+)\s*[\.\)]\s+(.+)$", re.MULTILINE)
-RE_DIEM  = re.compile(r"^([a-zđ])\s*[\)\.]\s+(.+)$", re.MULTILINE | re.IGNORECASE)
+prev_ends_mid_sentence = RE_MERGE_ELIGIBLE_END.search(prev[-1:])
+                         # prev kết thúc bằng [a-z, dấu phẩy, ;, hoặc chữ thường có dấu]
+curr_is_heading        = RE_IS_HEADING.match(line)
+                         # curr không bắt đầu bằng "Điều X" / "Khoản X" / "1." / "a)"
+curr_starts_lowercase  = line[0].islower() or line[0] in vietnamese_lowercase
+
+if prev_ends_mid_sentence and curr_starts_lowercase and not curr_is_heading:
+    merge dòng
+else:
+    giữ riêng
 ```
 
-**Validation:** sau parse, chạy assertion — mọi Điều phải có ít nhất 1 khoản; mọi khoản phải có `content` hoặc ≥1 điểm. Lỗi parse được log ra `logs/md_to_json_*.log`.
+Logic này **không nhập "Điều 6" vào câu trước** (curr_is_heading match) cũng **không nhập câu mới bắt đầu bằng chữ hoa** (curr_starts_lowercase = False) — đây là 2 lỗi phổ biến của các script merge ngây thơ.
 
-### 2.4 Bước 3 — Aggregator → JSONL
+### 2.3 Per-file strategy — vì sao có nhiều quyết định "đặc biệt"
 
-**File:** [source/ingestion/aggregator.py](../source/ingestion/aggregator.py)
+Mỗi script clean có dict `FILE_STRATEGIES` ([clean_luat_pdfs.py:87-102](../source/ingestion/clean_luat_pdfs.py#L87-L102)) định nghĩa hành vi riêng từng file. Dùng để xử lý các trường hợp **không thể tự động hoá**:
 
-Gộp các file JSON thành `Data/all_chunks.jsonl` (một dòng = một chunk với 2 trường `content` + `metadata`). Mỗi chunk có `chunk_id` duy nhất: `"{doc_id}|Đ{dieu}|K{khoan}|P{diem}"`.
+| Trường hợp | Strategy | Ví dụ |
+|---|---|---|
+| File giữ toàn bộ | `{"keep_all": True}` | luat35, luat36 — văn bản có hiệu lực, không cần lọc |
+| File hết hiệu lực nhưng vẫn cần | `{"keep_all": True, "prepend_warning": "..."}` | luat23_db_2008_inactive — chèn cảnh báo "đã hết hiệu lực từ 01/01/2025" lên đầu file md |
+| File có mảng đường sắt/thuỷ cần loại | filter regex chương | nd100, nd123 — chỉ giữ chương đường bộ; sau khi NĐ168/2024 bãi bỏ → md output rỗng |
+| File ngoài phạm vi | `EXCLUDED_FILES` (set) | nd17_2026 (hàng không), nd81_2026 (đường sắt), TT130_2025 (Bộ Quốc phòng), luat23_db_2008.pdf gốc |
 
-**Thống kê ingest (v6.0):**
+**Tại sao có cả luat23_db_2008.pdf trong `EXCLUDED_FILES` và luat23_db_2008_inactive.pdf trong `FILE_STRATEGIES`:** Đây là quyết định lưu trữ song song bản gốc + bản kèm warning. Bản gốc bị skip; bản inactive được clean với prepend_warning. **Hiện tại cleaned/luat/ chỉ có 2 file** (luat35 + luat36) — bản inactive đã bị bỏ ở giai đoạn registry trong [semantic_chunker.py:96-108](../source/ingestion/semantic_chunker.py#L96-L108) đánh `status="repealed"` (file md không tồn tại nên không sinh chunk nào).
 
-- Tổng chunks: **2 705**
-- Phân bổ theo doc_id: 168/2024 chiếm 46%, 36/2024 QH15 20%, 47/2024 TT-BGTVT 14%, còn lại 20%.
-- Độ dài chunk (token BPE tiếng Việt): p50=187, p95=456, max=812.
+### 2.4 Khác biệt giữa 3 script clean
+
+3 script chung 80% logic nhưng khác ở phần **filter chương đường bộ** và **per-file strategy**:
+
+| Khía cạnh | clean_luat_pdfs.py | clean_nghidinh_pdfs.py | clean_thongtu_pdfs.py |
+|---|---|---|---|
+| Số file xử lý input | 3 PDF (luat/) | 6 PDF (nghidinh/) | 17 PDF (thongtu/, recursive 4 subfolder) |
+| Thư mục output | `cleaned/luat/` | `cleaned/nghidinh/` | `cleaned/thongtu/{banglai,dangkyxe,khithai_antoan_kythuat,tuantrakiemsoat}/` |
+| Có blacklist? | ✓ (4 file) | ✓ (~3 file đường thuỷ/sắt) | ✓ (TT lệ phí Bộ Tài chính, TT y tế ngoài phạm vi) |
+| Per-file strategy phức tạp? | có (luat23 inactive) | có nhất (nd100/nd123 filter chương) | ít — đa số `keep_all=True` |
+| Giữ subfolder structure? | không | không | **có** (`rglob("*.pdf")` + recreate cùng path) |
+
+**Lý do tách 3 script thay vì gộp 1:** mỗi loại văn bản có **cấu trúc heading khác nhau** (vd. Thông tư hay có "Phần I, Phần II" thay vì "Chương"; Nghị định 168 có Phụ lục bảng phạt phức tạp). Tách script cho phép tinh chỉnh regex riêng mà không sợ phá mỗi loại.
+
+### 2.5 Phụ lục và quy chuẩn — backlog ingestion
+
+52 file ở `Data/raw/phuluc/` và `Data/raw/quychuan/` **chưa được index** vì chưa có pipeline:
+
+| Folder raw | Số file | Kiểu | Khó khăn pipeline |
+|---|---:|---|---|
+| `phuluc/tt12/` | 1 docx | Phụ lục TT12/2017 (bằng lái) | docx — cần `python-docx`, không phải pdfplumber |
+| `phuluc/tt13/` | 18 docx | Mẫu biên bản TNGT (Mẫu 1.1, 1.2, ...) | Biểu mẫu nhiều placeholder, ít text pháp lý — có thể skip |
+| `phuluc/tt35/` | 1 docx | Phụ lục TT35/2024 (đào tạo GPLX) | docx |
+| `phuluc/tt48/` | 29 docx | 29 quy chuẩn QCVN (04, 77, 86, 109, ...) | Mỗi QCVN là 1 quy chuẩn kỹ thuật dài — cần policy riêng vì format đặc thù |
+| `quychuan/giao_thong/` | 1 PDF | QCVN 41/2024 (biển báo) | PDF — có thể tái dùng `clean_thongtu_pdfs.py` với strategy mới |
+| `quychuan/thiet_bi_bao_ve/` | 2 PDF | QCVN 04/2021 (mũ bảo hiểm), TCVN 5756/2017 | PDF — tương tự |
+
+Đây là **backlog v7**. Để index thêm cần viết:
+1. `clean_phuluc_docx.py` — loader `python-docx` thay pdfplumber, xử lý biểu mẫu (chuyển checkbox + dotted-line về placeholder, hoặc skip toàn bộ tt13).
+2. `clean_quychuan_pdfs.py` — tương tự `clean_thongtu_pdfs.py` nhưng strategy giữ nguyên tên QCVN làm doc_id, gắn `topic="quy_chuan_ky_thuat"`.
+
+Khi 2 script trên hoàn thiện, ước tính corpus tăng **+800–1 200 chunk** (29 QCVN × ~30 chunk + 3 PDF QCVN khác). Lưu ý: quy chuẩn nặng về bảng số (mức phát thải, kích thước biển báo) → cần test xem encoder e5-small có giữ được semantic của bảng số không, hoặc cần hybrid với BM25 mạnh hơn.
+
+### 2.6 Output cuối: file md đầu vào cho chunker
+
+Sau cleaning, mỗi file md đại diện cho **1 văn bản** với cấu trúc đảm bảo:
+
+```markdown
+> ⚠️ LƯU Ý: VĂN BẢN NÀY ĐÃ HẾT HIỆU LỰC...   <-- optional, chỉ với strategy.prepend_warning
+
+# Chương I
+
+## Điều 1. Phạm vi điều chỉnh
+1. Nghị định này quy định về…
+2. Đối tượng áp dụng bao gồm…
+
+## Điều 6. Xử phạt người điều khiển xe ô tô vi phạm quy tắc giao thông
+1. Phạt tiền từ **400.000 đồng** đến **600.000 đồng** đối với:
+   a) Không chấp hành hiệu lệnh của đèn tín hiệu giao thông;
+   b) ...
+
+| Hành vi vi phạm | Mức phạt | Tước GPLX | Trừ điểm |
+|---|---|---|---|
+| Vượt đèn đỏ | 4-6 triệu | 1-3 tháng | 4 điểm |
+| ... | ... | ... | ... |
+
+**ngày 26 tháng 12 năm 2024**
+```
+
+Cấu trúc trên đảm bảo `RE_DIEU`, `RE_KHOAN`, `RE_DIEM` ở chunker bắt được đúng. Đây mới là điểm cốt lõi: **cleaning script không chỉ "làm sạch text", mà còn chuẩn bị input đúng format cho chunker hierarchy**.
+
+### 2.7 Idempotency và logging
+
+- **Idempotent:** chạy lại 3 script clean luôn ra cùng output (không dùng random, timestamp). Có thể chạy lại bất kỳ lúc nào sau khi update `FILE_STRATEGIES` mà không lo lệ thuộc state cũ.
+- **Logging:** mỗi script tạo file `logs/clean_{loai}_{YYYYMMDD_HHMMSS}.log` ([clean_luat_pdfs.py:59-72](../source/ingestion/clean_luat_pdfs.py#L59-L72)) ghi từng file processed/skipped/error. Script cũng dump `_processing_stats.json` vào thư mục cleaned (vd. `Data/cleaned/luat/_processing_stats.json`) chứa `{total, processed, skipped, errors, files: {pdf_name: {pages, lines, tables}}}` để audit.
+
+Lệnh chạy đầy đủ pipeline (xem [doc/implementation_plan.md](implementation_plan.md)):
+
+```bash
+cd traffic_rag
+source /home/pphong/venv/LLM_Agentic/bin/activate
+
+# Bước 1 — clean (chạy 1 lần khi raw có thay đổi)
+python source/ingestion/clean_luat_pdfs.py
+python source/ingestion/clean_nghidinh_pdfs.py
+python source/ingestion/clean_thongtu_pdfs.py
+
+# Bước 2 — chunk (sinh Data/all_chunks.jsonl)
+python source/ingestion/semantic_chunker.py
+
+# Bước 3 — index vào Qdrant (xem §5)
+python -m source.indexing.indexer --recreate
+```
+
+Tổng thời gian end-to-end trên CPU x86 (Intel i5, 16GB RAM): ~7 phút clean + ~1 phút chunk + ~6 phút embed/index = **~14 phút** cho 78 file raw → 2 818 vector trong Qdrant.
 
 ---
-
 ## 3. Chunking — RQ2
 
 ### 3.1 Bối cảnh và câu hỏi nghiên cứu
@@ -342,6 +474,159 @@ Số liệu lấy trực tiếp từ [research/results/metrics/rq2_retrieval_sum
 | **hierarchical** | **0.32** | **0.44** | **0.46** | **0.157** | **0.171** | **0.96** | **0.605** | 0.231 s |
 
 ![RQ2 Retrieval](../research/results/figures/rq2_chunking_retrieval.png)
+
+### 3.6.bis Cách bảng 3.6 được xây dựng — vì sao metric chênh lệch lớn
+
+Bảng 3.6 không phải kết quả "đo bằng eye" — mỗi ô đều ra từ một pipeline 4 bước có thể tái tạo. Hiểu pipeline giúp đọc đúng kết luận: **chênh lệch ở khoản-level (1.3–2.8×) đến từ metadata chunk, không phải từ retriever thông minh hơn.**
+
+#### Bước 1 — Hai collection Qdrant đối chứng, mọi yếu tố khác giữ giống nhau
+
+| Yếu tố | Hierarchical | Fixed-512 | Có là biến độc lập? |
+|---|---|---|:---:|
+| Script chunker | `HierarchicalLegalSplitter` ([semantic_chunker.py](../source/ingestion/semantic_chunker.py)) | `FixedSizeChunker` ([fixed_size_chunker.py](../source/ingestion/fixed_size_chunker.py)) | ✓ |
+| Số chunk index | 2 818 | 1 303 | (kết quả của chunking strategy) |
+| Encoder | e5-small (384d, max_seq=512) | **giống** | ✗ |
+| Collection Qdrant | `traffic_law_v3_e5` | `traffic_law_fixed512` | tách rời |
+| Retriever class | `TrafficHybridRetriever` (RRF, top_k=20) | **giống** | ✗ |
+| Gold queries | 25 query, [eval_qa.jsonl](../research/data/eval_qa.jsonl) | **giống** | ✗ |
+
+→ Biến độc lập **duy nhất** là chiến lược chunking. Mọi chênh lệch ở bảng 3.6 phải quy về chunking, không thể đổ lỗi cho encoder/retriever khác.
+
+#### Bước 2 — Điểm cốt lõi: metadata khác nhau giữa 2 chunk
+
+**Hierarchical chunk** (1 dòng JSONL, lấy từ [Data/all_chunks.jsonl](../Data/all_chunks.jsonl)):
+
+```json
+{
+  "metadata": {
+    "chunk_id": "168_2024_NĐ_CP_dieu6_khoan6_diem_c",
+    "doc_id":   "168/2024/NĐ-CP",
+    "dieu":     6,        ← chính xác 100%, đến từ regex RE_DIEU
+    "khoan":    "6",      ← chính xác 100%, đến từ regex RE_KHOAN
+    "diem":     "c",      ← chính xác 100%, đến từ regex RE_DIEM
+    "level":    3
+  },
+  "content": "…"
+}
+```
+
+→ 1 chunk = 1 đơn vị Điều/Khoản/Điểm, ranh giới chunk **trùng khít** ranh giới citation pháp lý.
+
+**Fixed-512 chunk** ([fixed_size_chunker.py:98-114](../source/ingestion/fixed_size_chunker.py#L98-L114), lấy từ [Data/all_chunks_fixed512.jsonl](../Data/all_chunks_fixed512.jsonl)):
+
+```json
+{
+  "metadata": {
+    "chunk_id": "fixed_35_2024_QH15_0000",
+    "doc_id":   "35/2024/QH15",
+    "dieu":     0,        ← regex post-pass: "Điều gần nhất phía TRƯỚC offset"
+    "khoan":    null,     ← thường null vì offset rơi giữa text
+    "diem":     null,     ← LUÔN null (fixed chunker không dò Điểm)
+    "level":    0,
+    "chunk_strategy": "fixed_512_o50"
+  },
+  "content": "…"
+}
+```
+
+Cụ thể, `_last_header_before` ([fixed_size_chunker.py:48-55](../source/ingestion/fixed_size_chunker.py#L48-L55)) hoạt động:
+
+1. Dò mọi marker `Điều X` và `số.` trong full text → list `[(offset, kind, value), ...]`.
+2. Với mỗi chunk bắt đầu ở `char_start`, gán `dieu_primary` = giá trị "Điều" của marker GẦN NHẤT có `offset ≤ char_start`.
+3. Tương tự cho `khoan_primary`.
+
+**Hậu quả:** một chunk fixed bắt đầu giữa Khoản 5 nhưng nội dung chứa cả Khoản 5 + Khoản 6 + Khoản 7 vẫn chỉ tag `khoan = 5`. Hai chunk khác nhau:
+
+```
+chunk A: char_start = 12 340, content = [đuôi Khoản 5][Khoản 6 đầy đủ][đầu Khoản 7]
+         metadata.khoan = 5  ← gán theo offset bắt đầu
+
+chunk B: char_start = 12 720, content = [đuôi Khoản 6][Khoản 7 đầy đủ][đầu Khoản 8]
+         metadata.khoan = 6
+```
+
+→ Khoản 6 nội dung nằm ở **CẢ A và B** nhưng chỉ B có metadata `khoan=6`. Nếu retriever cosine match trúng A (vì "nồng độ cồn" xuất hiện đầy đủ ở A), metric chấm A là **miss** dù người dùng đọc A vẫn thấy Khoản 6.
+
+#### Bước 3 — Pipeline tính metric ([rq2_chunking_eval.py:97-122](../research/scripts/rq2_chunking_eval.py#L97-L122))
+
+```python
+for q in 25 gold queries:                         # eval_qa.jsonl
+    retrieved = retriever.retrieve(q.question, top_k=20)
+    for k in [5, 10, 20]:
+        r_k = recall_at_k(retrieved, q.gold_citations, k, level="khoan")
+        # ghi rq2_retrieval_per_question.csv
+# average over 25 queries → rq2_retrieval_summary.csv
+```
+
+Trong đó `recall_at_k` so **citation key** $(doc\_id, dieu, khoan)$:
+
+```python
+def _citation_key(c, level="khoan"):
+    return (c["doc_id"], c["dieu"], c["khoan"])  # tuple 3 phần tử
+
+def recall_at_k(retrieved, gold, k, level):
+    gold_keys = {_citation_key(g, level) for g in gold}
+    hit_keys  = {_citation_key(r, level) for r in retrieved[:k]}
+    return |gold_keys ∩ hit_keys| / |gold_keys|
+```
+
+Match khi **cả 3 phần** $(doc\_id, dieu, khoan)$ trùng. Chính ở dòng so này, fixed_512 thua: nó có `khoan=5` hoặc `khoan=null` còn gold có `khoan=6` → set intersection = ∅.
+
+#### Bước 4 — Tính trên RQ-002 cho cả 2 chunker
+
+**Gold:** `(168/2024/NĐ-CP, 6, 6)`. **Top-5 retrieved của 2 pipeline (giả lập có cấu trúc đúng từ trace):**
+
+**Hierarchical:**
+
+| rank | metadata key | Match gold? |
+|---:|---|:---:|
+| 1 | (168/2024/NĐ-CP, 6, 7) | ✗ |
+| 2 | **(168/2024/NĐ-CP, 6, 6)** | ✓ HIT |
+| 3 | (168/2024/NĐ-CP, 6, 6) | ✓ |
+| 4 | (168/2024/NĐ-CP, 6, 5) | ✗ |
+| 5 | (168/2024/NĐ-CP, 6, 8) | ✗ |
+
+→ R@5(khoản) = 1/1 = **1.0**, MRR = 1/2 = **0.5**.
+
+**Fixed-512 (cùng query, content tương tự nhưng metadata khác):**
+
+| rank | metadata key | Vector content thực sự chứa | Match gold? |
+|---:|---|---|:---:|
+| 1 | (168/2024/NĐ-CP, 6, **null**) | bao trùm Khoản 5+6+7 | ✗ — null ≠ 6 |
+| 2 | (168/2024/NĐ-CP, 6, **null**) | bao trùm Khoản 6+7 | ✗ |
+| 3 | (168/2024/NĐ-CP, 6, **5**) | offset rơi tại Khoản 5 | ✗ — 5 ≠ 6 |
+| 4 | (168/2024/NĐ-CP, 6, **null**) | … | ✗ |
+| 5 | (168/2024/NĐ-CP, 5, **null**) | … | ✗ |
+
+→ R@5(khoản) = **0.0** ngay cả khi **3 chunk fixed thực sự CHỨA nội dung Khoản 6**!
+
+#### Bước 5 — Tại sao R@10(doc) gần bằng nhau (0.96 vs 0.92)
+
+Khi đo level `doc_id`, citation key chỉ còn `(doc_id,)`:
+
+```python
+def _citation_key(c, level="doc_id"):
+    return (c["doc_id"],)
+```
+
+Cả 2 chunker đều biết `doc_id` chính xác (lookup từ `source_file` → `METADATA_RULES` registry trong [semantic_chunker.py:78-330](../source/ingestion/semantic_chunker.py#L78)). Khi đó khác biệt mất gần hết — chỉ còn 0.96 vs 0.92, chênh ~4% (do hierarchical match cosine chính xác hơn ở vài câu cross-reference).
+
+→ Đây là lý do phải đo ở **CẢ 2 cấp**: chỉ đo doc_id sẽ không thấy lợi ích hierarchical; chỉ đo khoan sẽ kết luận sai rằng fixed_512 "không tìm thấy gì" — thực ra nó tìm đúng văn bản, chỉ là metadata không định danh được khoản.
+
+#### Bước 6 — Tổng hợp tỉ số chênh lệch và nguyên nhân
+
+| Metric | Fixed | Hier | Tỉ số (×) | Nguyên nhân chính |
+|---|---:|---:|---:|---|
+| R@5(khoản) | 0.24 | 0.32 | **1.33×** | metadata fixed thiếu khoản chính xác → đánh trượt set-intersection |
+| R@10(khoản) | 0.30 | 0.44 | **1.47×** | mở rộng top-k → hier có thêm khoản đúng được capture |
+| R@20(khoản) | 0.32 | 0.46 | **1.44×** | bão hoà — sau top-10, gold không xuất hiện thêm |
+| MRR(khoản) | 0.0678 | 0.157 | **2.31×** | hier đặt khoản đúng ở rank cao hơn (rank 2–3 vs rank 14) |
+| nDCG@10(khoản) | 0.062 | 0.171 | **2.76×** | log-decay phạt mạnh khi gold ở rank thấp |
+| R@10(doc) | 0.92 | 0.96 | **1.04×** | cả 2 đều biết doc_id — khác biệt biến mất |
+| MRR(doc) | 0.587 | 0.605 | **1.03×** | tương tự |
+| Latency | 0.065 s | 0.231 s | **0.28×** (hier chậm hơn) | hier bật sibling enrichment + cross-ref pass |
+
+**Kết luận pipeline:** Thắng lợi của hierarchical là **mang tính cấu trúc** (metadata trùng ranh giới citation), không phải mang tính tinh chỉnh siêu tham số. Fixed_512 không thể "vá" bằng cách dò khoản hậu kỳ kỹ hơn vì 1 chunk fixed thường bao trùm 2-3 khoản — không có 1 nhãn `khoan` đúng đại diện cho cả chunk.
 
 ### 3.7 Kết quả end-to-end (vanilla RAG)
 

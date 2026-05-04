@@ -75,11 +75,16 @@ class TrafficHybridRetriever:
         jsonl_path: str | Path = DEFAULT_JSONL,
         rrf_k: int = 60,
         candidates_per_retriever: int = 30,
+        enable_reranker: bool = False,
+        reranker_model: str | None = None,
+        rerank_top_n: int = 30,
     ):
         self.collection_name = collection_name
         self.rrf_k = rrf_k
         self.candidates_per_retriever = candidates_per_retriever
         self.jsonl_path = Path(jsonl_path)
+        self.enable_reranker = enable_reranker
+        self.rerank_top_n = rerank_top_n
 
         logger.info(f"Connecting Qdrant: {qdrant_host}:{qdrant_port}")
         self.client = QdrantClient(host=qdrant_host, port=qdrant_port)
@@ -88,6 +93,13 @@ class TrafficHybridRetriever:
         logger.info(f"Loading embedding model: {embedding_model}")
         self.model = SentenceTransformer(embedding_model)
         self._query_prefix = _e5_query_prefix(embedding_model)
+
+        self._reranker = None
+        if enable_reranker:
+            from .reranker import Reranker, DEFAULT_RERANKER_MODEL
+            self._reranker = Reranker(
+                model_name=reranker_model or DEFAULT_RERANKER_MODEL,
+            )
 
         self._bm25_index: BM25Okapi | None = None
         self._payloads: list[dict] = []
@@ -168,7 +180,12 @@ class TrafficHybridRetriever:
             : self.candidates_per_retriever
         ]
 
-        fused = self._rrf_fuse(dense_hits, bm25_hits, top_k)
+        fuse_k = max(top_k, self.rerank_top_n) if self.enable_reranker else top_k
+        fused = self._rrf_fuse(dense_hits, bm25_hits, fuse_k)
+
+        if self.enable_reranker and self._reranker is not None and fused:
+            fused = self._reranker.rerank(query, fused, top_k=top_k)
+
         return self._attach_siblings(fused, max_neighbors=2)
 
     retrieve = get_relevant_chunks

@@ -78,8 +78,44 @@ async def lifespan(app: FastAPI):
     _load_dotenv_if_present()
     _validate_env()
 
+    # Always-on LangSmith tracing when LANGCHAIN_API_KEY is present.
+    # No-op if the key is missing (logs a warning, no exception).
+    try:
+        from research.utils.langsmith_setup import enable_tracing
+        traced = enable_tracing(
+            project=os.getenv("LANGCHAIN_PROJECT", "traffic-rag-prod"),
+            run_name=None,
+        )
+        logger.info("LangSmith tracing: %s", "ON" if traced else "OFF (no key)")
+    except Exception as exc:
+        logger.warning("LangSmith setup failed (non-fatal): %s", exc)
+
+    # Lightweight runtime metrics — exposed via GET /metrics.
+    import time as _time
+    app.state.metrics = {
+        "started_at":          _time.time(),
+        "total_chat_requests": 0,
+        "total_resume_requests": 0,
+        "total_chat_errors":   0,
+        "total_chat_latency_ms": 0.0,
+        "last_request_at":     None,
+        "tracing_enabled":     bool(os.getenv("LANGCHAIN_TRACING_V2", "").lower() == "true"),
+        "reranker_enabled":    False,  # populated below
+    }
+
     logger.info("Initialising retriever...")
-    retriever = TrafficHybridRetriever()
+    enable_reranker = os.getenv("ENABLE_RERANKER", "false").lower() in ("1", "true", "yes")
+    reranker_model = os.getenv("RERANKER_MODEL") or None
+    rerank_top_n = int(os.getenv("RERANK_TOP_N", "30"))
+    retriever = TrafficHybridRetriever(
+        enable_reranker=enable_reranker,
+        reranker_model=reranker_model,
+        rerank_top_n=rerank_top_n,
+    )
+    if enable_reranker:
+        logger.info("Reranker enabled (model=%s, top_n=%d)",
+                    reranker_model or "BAAI/bge-reranker-v2-m3", rerank_top_n)
+    app.state.metrics["reranker_enabled"] = bool(enable_reranker)
 
     model_name = os.getenv("GENERATOR_MODEL", "gemini-3.1-flash-lite-preview")
     logger.info("Initialising generator (%s)...", model_name)
@@ -155,6 +191,30 @@ async def health():
     return {"status": "ok"}
 
 
+@app.get("/metrics")
+async def metrics():
+    """Lightweight runtime metrics for monitoring — JSON, not Prometheus.
+
+    Counters are updated by /chat and /resume handlers. Latency is the
+    rolling sum (divide by total_chat_requests for the mean).
+    """
+    import time as _time
+    m = app.state.metrics
+    started = m.get("started_at") or _time.time()
+    n = max(int(m.get("total_chat_requests") or 0), 0)
+    total_lat = float(m.get("total_chat_latency_ms") or 0.0)
+    return {
+        "uptime_seconds":        round(_time.time() - started, 1),
+        "total_chat_requests":   n,
+        "total_resume_requests": int(m.get("total_resume_requests") or 0),
+        "total_chat_errors":     int(m.get("total_chat_errors") or 0),
+        "chat_avg_latency_ms":   round(total_lat / n, 1) if n else None,
+        "last_request_at":       m.get("last_request_at"),
+        "tracing_enabled":       bool(m.get("tracing_enabled")),
+        "reranker_enabled":      bool(m.get("reranker_enabled")),
+    }
+
+
 MAX_HISTORY_MESSAGES = 20  # ~10 turns
 
 
@@ -205,10 +265,20 @@ async def chat(req: ChatRequest):
     config = {"configurable": {"thread_id": thread_id}}
     graph = app.state.graph
 
-    await graph.ainvoke(
-        {"query": req.query, "raw_query": req.query},
-        config,
-    )
+    import time as _time
+    _t0 = _time.time()
+    app.state.metrics["last_request_at"] = _t0
+    app.state.metrics["total_chat_requests"] = int(app.state.metrics.get("total_chat_requests") or 0) + 1
+    try:
+        await graph.ainvoke(
+            {"query": req.query, "raw_query": req.query},
+            config,
+        )
+    except Exception:
+        app.state.metrics["total_chat_errors"] = int(app.state.metrics.get("total_chat_errors") or 0) + 1
+        raise
+    finally:
+        app.state.metrics["total_chat_latency_ms"] = float(app.state.metrics.get("total_chat_latency_ms") or 0.0) + (_time.time() - _t0) * 1000.0
     snap = await graph.aget_state(config)
 
     if _is_paused_on_web_review(snap):
@@ -245,6 +315,7 @@ async def chat(req: ChatRequest):
 @app.post("/resume/{thread_id}", response_model=ChatResponse)
 async def resume(thread_id: str, req: ResumeRequest):
     logger.info("RESUME [%s]: approved=%s", thread_id, req.approved)
+    app.state.metrics["total_resume_requests"] = int(app.state.metrics.get("total_resume_requests") or 0) + 1
     config = {"configurable": {"thread_id": thread_id}}
     graph = app.state.graph
 

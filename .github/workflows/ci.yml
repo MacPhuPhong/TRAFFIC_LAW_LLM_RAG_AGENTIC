@@ -1,0 +1,62 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  smoke:
+    name: Smoke tests (no external services)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install minimal deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest qdrant-client rank-bm25 sentence-transformers
+      - name: Run smoke tests only
+        run: pytest tests/test_smoke.py -m "not requires_qdrant"
+
+  regression:
+    name: Retrieval regression (against ephemeral Qdrant)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      qdrant:
+        image: qdrant/qdrant:v1.14.2
+        ports: ["6333:6333"]
+        options: >-
+          --health-cmd "wget -q -O- localhost:6333/collections || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install full deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ../requirements.txt || pip install -r requirements.txt
+      # Skip retrieval test if all_chunks.jsonl is gitignored — common
+      # for repos that build the corpus on demand.
+      - name: Index corpus (best-effort)
+        run: |
+          if [ -f Data/all_chunks.jsonl ]; then
+            python -m source.indexing.indexer --recreate || echo "indexing failed — regression test will skip"
+          else
+            echo "Data/all_chunks.jsonl missing — regression test will skip"
+          fi
+      - name: Run regression tests
+        env:
+          QDRANT_HOST: localhost
+          QDRANT_PORT: "6333"
+        run: pytest tests/test_retrieval_regression.py -v

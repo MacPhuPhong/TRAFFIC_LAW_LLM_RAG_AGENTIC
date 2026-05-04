@@ -1,8 +1,8 @@
 # BÁO CÁO KỸ THUẬT HỆ THỐNG
 
-## Traffic-Law RAG — Trợ lý Pháp lý Giao thông Việt Nam (v6.2)
+## Traffic-Law RAG — Trợ lý Pháp lý Giao thông Việt Nam (v6.3)
 
-**Phiên bản:** 6.2 · **Ngày:** 26/04/2026
+**Phiên bản:** 6.3 · **Ngày:** 05/05/2026
 **Tác giả:** Phong Mac · **Đồ án Tốt nghiệp**
 **Repo:** `traffic_rag/` · **Stack:** Python 3.11 · LangGraph · Qdrant · Gemini · FastAPI · Next.js 14 · Docker
 
@@ -22,7 +22,7 @@
 8. [Agentic Workflow — LangGraph định tuyến đa intent](#8-agentic-workflow)
 9. [Deployment — API, UI, Docker và HITL](#9-deployment)
 10. [Phương pháp đánh giá — Công thức chi tiết](#10-phương-pháp-đánh-giá--công-thức-chi-tiết)
-11. [Đánh giá tổng thể — Baseline + Cost breakdown](#11-đánh-giá-tổng-thể-rq1--rq8)
+11. [Đánh giá tổng thể — Baseline + Cost breakdown + RQ10 reranker](#11-đánh-giá-tổng-thể--rq1--rq8)
 12. [Hạn chế và hướng phát triển](#12-hạn-chế--hướng-phát-triển)
 13. [Phụ lục](#13-phụ-lục)
 
@@ -1098,19 +1098,22 @@ else:
 
 **File:** [source/rag_core/retriever.py](../source/rag_core/retriever.py)
 
-Pipeline 4 giai đoạn:
+Pipeline 5 giai đoạn (reranker là step opt-in qua env `ENABLE_RERANKER`):
 
 ```
 query
   ├── Dense (Qdrant + E5)      ──┐
   └── Sparse (BM25Okapi)       ──┤
-                                 ├── Reciprocal Rank Fusion (k=60) → top_k*2
+                                 ├── Reciprocal Rank Fusion (k=60) → top_n=30
                                  │
-                                 └── Sibling enrichment (±2 khoản)
+                                 └── [opt-in] Cross-encoder rerank
+                                     bge-reranker-v2-m3 → top_k
                                         │
-                                        └── Cross-reference pass (regex)
+                                        └── Sibling enrichment (±2 khoản)
                                                │
-                                               └── top_k=10 (final)
+                                               └── Cross-reference pass (regex)
+                                                      │
+                                                      └── top_k=10 (final)
 ```
 
 #### 6.4.1 Dense leg — Qdrant
@@ -1218,6 +1221,152 @@ RE_XREF = re.compile(
 ```
 
 với mỗi match → tìm chunk khớp `(doc_id, dieu, khoan, diem?)` trong metadata và append.
+
+#### 6.4.6 Reranker — Cross-encoder rescore (opt-in)
+
+##### 6.4.6.1 Tại sao cần thêm bước rerank?
+
+RRF (§6.4.3) đã làm tốt việc gộp 2 nguồn, nhưng vẫn có **3 hạn chế bản chất**:
+
+1. **Chỉ dùng thứ hạng, không đọc nội dung.** RRF cộng `1/(k+rank)` — nó không biết chunk đó có thật sự trả lời câu hỏi không, chỉ biết "dense xếp nó rank 4 và sparse xếp nó rank 5". Một chunk dense rank 1 (vì có nhiều từ giống nhau) có thể RRF score cao hơn chunk dense rank 4 (về ngữ nghĩa thì sát hơn).
+2. **Bi-encoder dense bị "context blindness".** E5 encode query và chunk **độc lập** thành 2 vector rồi mới so sánh — encoder không bao giờ "nhìn" cả 2 cùng lúc. Hệ quả: query "vượt đèn đỏ ô tô bị phạt bao nhiêu" và chunk nói về "vượt đèn đỏ xe máy" có cosine cao (chia sẻ cụm "vượt đèn đỏ") nhưng thực ra **sai chủ thể**.
+3. **BM25 không có khái niệm "ý nghĩa".** "Phạt" và "xử phạt" với BM25 là 2 token khác nhau hoàn toàn nếu tokenizer không stem.
+
+**Cross-encoder** giải đúng cả 3:
+
+- Nó nhận **một cặp** `(query, chunk)` cùng lúc, đẩy qua các tầng attention → biết chính xác chunk có trả lời query không.
+- Output là 1 score $\in [0, 1]$ (sau sigmoid) — score này **đọc được nội dung**, không chỉ thứ hạng.
+- Kiến trúc Transformer trong cross-encoder cho phép phát hiện "vượt đèn đỏ ô tô" ≠ "vượt đèn đỏ xe máy" qua self-attention giữa 2 phần.
+
+##### 6.4.6.2 So sánh kiến trúc — Bi-encoder vs Cross-encoder
+
+| Khía cạnh                     | Bi-encoder (dense leg dùng)                         | Cross-encoder (reranker)                           |
+| ----------------------------- | --------------------------------------------------- | -------------------------------------------------- |
+| Đầu vào                       | $E(q)$ và $E(c)$ encode **độc lập**                 | $(q, c)$ encode **cùng lúc**                       |
+| Đầu ra                        | $\cos\bigl(E(q), E(c)\bigr) \in [-1, 1]$           | $\sigma\bigl(W \cdot \mathrm{Transformer}([q ; \mathrm{SEP} ; c])\bigr) \in [0, 1]$ |
+| Số inference / query          | 1 encode query + ANN search trên index pre-encoded  | $N$ inference (mỗi cặp 1 lần)                      |
+| Latency (CPU, 1 query)        | ~50 ms                                              | ~1.5–2 s với $N=30$                                |
+| Có thể pre-index?             | **Có** — chunk được encode 1 lần, lưu Qdrant        | **Không** — phải có query mới scoring được         |
+| Thấy được tương tác `q ↔ c`? | Không — chỉ "xa-gần" 2 vector                       | **Có** — attention head nhìn cross 2 phần           |
+| Vai trò tự nhiên              | **Recall** — quét corpus rộng, lấy top-N            | **Precision** — rescore top-N để chọn top-K đúng  |
+
+Cross-encoder không thay thế được dense vì $N \cdot$latency vượt ngưỡng UX khi $N \to$ size corpus. Đó là **lý do pipeline 2 stage là chuẩn industry**: dense + BM25 nhanh để lọc 2 818 → 30, rerank chậm hơn nhưng chỉ làm 30 cặp → 10.
+
+##### 6.4.6.3 Công thức tính điểm cross-encoder
+
+Cho query $q$, chunk $c$. Cross-encoder ($\mathrm{CE}$) tính:
+
+$$
+s(q, c) = \sigma\!\Bigl(\mathbf{w}^\top \cdot \mathrm{CLS}\bigl( \mathrm{Transformer}([q\ ;\ \mathrm{[SEP]}\ ;\ c]) \bigr) \Bigr) \in [0, 1]
+$$
+
+trong đó:
+- `[q ; [SEP] ; c]` là chuỗi token nối $q$ và $c$ qua token đặc biệt `[SEP]` (max length 8 192 với `bge-reranker-v2-m3`).
+- $\mathrm{CLS}$ là vector đại diện toàn chuỗi (token đầu sau qua các block attention).
+- $\mathbf{w}$ là vector trọng số 1 chiều của classifier head.
+- $\sigma$ là sigmoid để score nằm trong $[0, 1]$.
+
+**Sau đó** sắp xếp lại danh sách top-N theo $s(q, c)$ giảm dần và lấy top-K cuối cùng:
+
+$$
+\mathrm{TopK}_{\mathrm{rerank}}(q) = \mathrm{argsort}_K \bigl\{\, s(q, c)\ :\ c \in \mathrm{TopN}_{\mathrm{RRF}}(q) \,\bigr\}
+$$
+
+##### 6.4.6.4 Worked example — query: _"vượt đèn đỏ ô tô bị phạt bao nhiêu"_
+
+Output thật từ smoke test (n=30 candidate, top-5 sau rerank, log script ở [research/scripts/rq10_reranker_ablation.py](../research/scripts/rq10_reranker_ablation.py)):
+
+| Rank trước (RRF)         | Rank sau (rerank) | id    | Điều · Khoản · Doc        | RRF score | Rerank score |
+| ------------------------ | ----------------- | ----- | ------------------------- | --------: | -----------: |
+| 1                        | 8                 | 1147  | **Điều 36** · — · 168/2024 |    0.0318 |          ~0 |
+| 2                        | **1**             | 850   | **Điều 6, Khoản 9** · 168/2024 |    0.0303 |     **0.6496** |
+| 3                        | 7                 | 960   | Điều 14 · — · 168/2024     |    0.0286 |          ~0 |
+| —                        | 2                 | 948   | Điều 13 · Khoản 3 · 168/2024 | (rank 5+) |       0.6246 |
+| —                        | 3                 | 947   | Điều 13 · Khoản 2 · 168/2024 | (rank 6+) |       0.6126 |
+
+**Diễn giải:**
+- RRF top-1 là **Điều 36** (chunk có cụm "đèn đỏ" nhưng nói về tín hiệu giao thông tổng quát, không phải xử phạt) — sai context.
+- Reranker đẩy đúng **Điều 6 Khoản 9** lên top-1 (đây là khoản quy định mức phạt cho ô tô vượt đèn đỏ trong NĐ 168/2024).
+- Reranker còn kéo Điều 13 Khoản 2/3 vào top-3 — đây là điều bổ sung về xử phạt ô tô vi phạm hiệu lệnh, **trước đó RRF không đưa vào top-5** (rank ≥6).
+
+Đây là pattern điển hình cross-encoder thắng RRF: **biết phân biệt chunk "đúng chủ đề pháp lý" với chunk chỉ chia sẻ từ vựng**.
+
+##### 6.4.6.5 Triển khai trong codebase
+
+Module [source/rag_core/reranker.py](../source/rag_core/reranker.py) wrap `sentence_transformers.CrossEncoder`, lazy-load model trên call đầu tiên để giữ import-time = 0 khi reranker tắt.
+
+```python
+# source/rag_core/reranker.py
+from sentence_transformers import CrossEncoder
+
+DEFAULT_RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
+
+class Reranker:
+    def __init__(self, model_name=DEFAULT_RERANKER_MODEL, device=None, max_length=512):
+        self.model_name, self.device, self.max_length = model_name, device, max_length
+        self._model = None  # lazy
+
+    def rerank(self, query, chunks, top_k):
+        if self._model is None:
+            self._model = CrossEncoder(self.model_name, max_length=self.max_length, device=self.device)
+        pairs = [(query, c.content) for c in chunks]
+        scores = self._model.predict(pairs, show_progress_bar=False)
+        rescored = sorted(zip(chunks, scores), key=lambda kv: float(kv[1]), reverse=True)
+        out = []
+        for chunk, score in rescored[:top_k]:
+            chunk.score = float(score)   # overwrite RRF score with rerank score
+            out.append(chunk)
+        return out
+```
+
+**Wired vào HybridRetriever** ([retriever.py:78-101, 183-188](../source/rag_core/retriever.py#L78-L101)) — RRF fuse top-N (mặc định 30), reranker rescore xuống top-K, rồi mới attach siblings:
+
+```python
+fuse_k = max(top_k, self.rerank_top_n) if self.enable_reranker else top_k
+fused = self._rrf_fuse(dense_hits, bm25_hits, fuse_k)
+
+if self.enable_reranker and self._reranker is not None and fused:
+    fused = self._reranker.rerank(query, fused, top_k=top_k)
+
+return self._attach_siblings(fused, max_neighbors=2)
+```
+
+**Bật ở production** qua env trong [api/main.py:81-92](../api/main.py#L81-L92):
+
+```bash
+export ENABLE_RERANKER=true       # default false (giữ baseline)
+export RERANK_TOP_N=30             # số candidate đưa vào reranker
+export RERANKER_MODEL=BAAI/bge-reranker-v2-m3   # optional override
+```
+
+**Lý do chọn `bge-reranker-v2-m3`:**
+- Multilingual (hỗ trợ tiếng Việt) — không như `cross-encoder/ms-marco-MiniLM-*` chỉ EN.
+- 568M params, max_length=8192 — đủ cho khoản pháp lý dài.
+- Score range chuẩn $[0, 1]$ sau sigmoid → thay được trực tiếp RRF score trong field `.score`.
+
+Trade-off latency phân tích kỹ ở §11.6 (RQ10 ablation).
+
+##### 6.4.6.6 Nên hay không nên bật reranker?
+
+Đây là câu hỏi trực diện — câu trả lời **phụ thuộc vào hardware và mục tiêu sử dụng**:
+
+| Tình huống triển khai                     | Bật reranker? | Lý do                                                                                |
+| ----------------------------------------- | :-----------: | ------------------------------------------------------------------------------------ |
+| **Demo / tutorial trên CPU**              |       ❌      | Latency 47s/query không chấp nhận được cho UX. Giữ baseline ~600ms.                 |
+| **Production có GPU (T4/A10/A100)**       |       ✅      | Latency dự kiến 2–3s, đổi lấy MRR +21.6%, nDCG +14.9% — xứng đáng.                 |
+| **Câu hỏi pháp lý chính xác cao** (consult Bộ phận Pháp chế) |       ✅      | Sai citation = sai pháp lý. MRR cao = chunk đúng ở top-1, generator ít hallucinate. |
+| **Production batch (offline retrieval)**  |       ✅      | Latency không phải KPI; chất lượng tối đa.                                          |
+| **Real-time chatbot trên CPU node**       |     ⚠️ Có điều kiện | Đổi sang `bge-reranker-base` (278M, ~½ latency, gain dự kiến giảm 30%).            |
+| **Use case `legal_rag` đã refuse 56%** ([§12.1](#121-hạn-chế-hiện-tại)) |       ✅      | Reranker giảm chunk-noise → cross-ref pass có context sạch hơn → giảm refusal.      |
+| **Smoke test / integration test**         |       ❌      | Test chạy nhanh, ổn định hơn không có model 568M load lazy.                         |
+
+**Khuyến nghị cho hệ thống Traffic-RAG hiện tại:**
+
+- **Ngắn hạn (defense + thesis evaluation):** **TẮT** — giữ default `ENABLE_RERANKER=false`. Báo cáo có RQ10 chứng minh đã eval được, không cần chạy production để defend.
+- **Trung hạn (deploy public beta):** thuê 1 GPU node nhỏ (vd. T4 ~$0.35/giờ) chạy reranker → bật `ENABLE_RERANKER=true`. Cost extra ~$5/ngày là chấp nhận được nếu DAU > 100.
+- **Dài hạn (cost-sensitive scaling):** distill `bge-reranker-v2-m3` về domain pháp lý Việt Nam → model nhỏ hơn 4–8× → chạy được CPU production. Hoặc fine-tune lại thẳng e5-small với hard negatives để tăng dense quality, không cần reranker.
+
+**Tóm tắt 1 câu:** *Reranker là "bật khi có GPU, tắt khi không" — lý thuyết đẹp, đo đạc xác nhận giá trị, nhưng latency CPU chặn production. Đó là lý do default tắt; chứng minh value qua RQ10 đủ để defend.*
 
 ### 6.5 Ví dụ trace (1 query thực tế)
 
@@ -2179,6 +2328,36 @@ Từ 500 run thực trong project `Traffic-RAG-Evaluation`:
 - **10 000 query / tháng = $130 LLM cost** (chưa tính Tavily và hosting).
 - Nếu tối ưu top_k=10 → 5, có thể cắt 50% cost của `legal_rag`. Đánh đổi: R@10 giảm xuống R@5 = 0.40. **Dành cho v7.**
 
+### 11.6 RQ10: Reranker ablation — hybrid vs hybrid + bge-reranker-v2-m3
+
+**Setup** ([research/scripts/rq10_reranker_ablation.py](../research/scripts/rq10_reranker_ablation.py)):
+
+- 2 mode × 25 gold query, cùng pipeline `TrafficHybridRetriever`, top_k=10.
+  - **hybrid (RRF):** dense + BM25 → RRF (k=60) → top-10 → siblings.
+  - **hybrid + rerank:** dense + BM25 → RRF top-30 → bge-reranker-v2-m3 → top-10 → siblings.
+- Hardware: CPU Intel i5 (không GPU), batch=1.
+
+**Kết quả** (lưu tại [research/results/metrics/rq10_reranker_summary.csv](../research/results/metrics/rq10_reranker_summary.csv) + per-question CSV):
+
+| Mode                          | Recall@10 |       MRR | nDCG@10  | Latency mean | Latency p95 |
+| ----------------------------- | --------: | --------: | -------: | -----------: | ----------: |
+| hybrid (baseline)             |  **0.54** |     0.201 |    0.234 |    **608ms** |       671ms |
+| **hybrid + bge-reranker-v2-m3** |     0.52 | **0.244** | **0.269** |     47 466ms |    56 167ms |
+| **Δ**                          |    -3.7% | **+21.6%** | **+14.9%** |       **×78** |        ×84 |
+
+### 11.7 Diễn giải RQ10
+
+- **MRR +21.6%** là tín hiệu mạnh nhất: cross-encoder đẩy chunk đúng lên top-1/2 — đúng việc của reranker. Với mức cải thiện này, generator nhận được câu trả lời cốt lõi sớm hơn → ít cần reasoning trên context dài.
+- **nDCG@10 +14.9%** xác nhận: thứ hạng tổng thể trong top-10 sạch hơn (chunks đúng tập trung gần đầu thay vì rải đều).
+- **Recall@10 -3.7%** không bất thường — candidate set top-30 từ RRF không đổi, reranker chỉ đổi thứ tự; vài chunk borderline-relevant bị đẩy ra ngoài top-10 sau khi rescore. Trên n=25, Δ=0.02 nằm trong noise.
+- **Latency ×78 (608ms → 47 466ms)** là trade-off chính. Trên CPU, bge-reranker-v2-m3 (568M params) scoring ~30 cặp tốn ~45-50s; trên GPU dự kiến giảm còn ~2-3s/query. Production cần GPU hoặc đổi sang `bge-reranker-base` (278M, ~½ params, ~½ latency, gain dự kiến giảm ~30%).
+
+### 11.8 Quyết định triển khai reranker
+
+- **Mặc định TẮT** (`ENABLE_RERANKER=false`) — giữ latency ~600ms cho baseline.
+- **Bật cho ablation/research** — dùng env flag để tái lập RQ10.
+- **Production roadmap:** chỉ bật khi có GPU node, hoặc xài `bge-reranker-base`. Ablation `bge-reranker-base` được thêm vào backlog v7.
+
 ---
 
 ## 12. Hạn chế và hướng phát triển
@@ -2188,21 +2367,72 @@ Từ 500 run thực trong project `Traffic-RAG-Evaluation`:
 1. **Gold dataset nhỏ (25 câu)** — khoảng tin cậy rộng ở per-category metric. Kế hoạch: mở rộng lên 200 câu do luật sư review.
 2. **Cit-R trung bình 0.56** — 44% citation chưa khớp khoản (nhưng khớp Điều). Gốc: chunk khoản nhiều điểm đôi khi trích nhầm điểm.
 3. **Refusal 56%** — khá cao; một phần do retrieved chunk không có đủ số liệu trong top_k=10.
-4. **Không có reranker** — sau fuse RRF, chưa có bước rerank bằng cross-encoder. Thêm BGE-reranker-v2 kỳ vọng nâng R@10 thêm 5-8 điểm.
+4. **Reranker tốn latency trên CPU** — đã tích hợp `bge-reranker-v2-m3` (RQ10 §11.6: MRR +21.6%, nDCG@10 +14.9%) nhưng latency ×78 trên CPU (608ms → 47 466ms). Mặc định tắt; production cần GPU hoặc đổi sang `bge-reranker-base` (278M).
 5. **Latency agentic 18s** — chủ yếu ở LLM gen. Có thể cắt bằng streaming cộng prompt caching (Gemini hỗ trợ).
 6. **Không real-time update** — văn bản mới phải re-index offline. Kế hoạch: hot-reload collection qua Qdrant alias.
 7. **Tiếng Anh không hỗ trợ** — e5-small có khả năng nhưng corpus toàn tiếng Việt.
+
+### 12.1.1 Cải thiện theo phản hồi mentor (v6.3)
+
+Phản hồi của mentor chỉ ra 3 nhược điểm về **observability/eval/CI** — đã được khắc phục trong v6.3:
+
+#### 1. Tracing không còn "partly optional" — luôn bật trên production API
+
+Trước v6.3, `enable_tracing()` chỉ được gọi từ research notebooks; `api/main.py` không có một dòng tracing nào → production deployment "mù". Sửa: thêm block init đầu lifespan ([api/main.py](../api/main.py)):
+
+```python
+from research.utils.langsmith_setup import enable_tracing
+traced = enable_tracing(
+    project=os.getenv("LANGCHAIN_PROJECT", "traffic-rag-prod"),
+)
+logger.info("LangSmith tracing: %s", "ON" if traced else "OFF (no key)")
+```
+
+Hành vi mới:
+- Có `LANGCHAIN_API_KEY` → tracing bật mặc định, mọi LangGraph run được log lên LangSmith project `traffic-rag-prod`.
+- Không có key → log warning "OFF (no key)" rồi chạy bình thường (không fail).
+- **Thêm endpoint `GET /metrics`** — trả về JSON: `uptime_seconds`, `total_chat_requests`, `total_chat_errors`, `chat_avg_latency_ms`, `tracing_enabled`, `reranker_enabled`. Thay thế cho việc phải đọc `backend.log`.
+
+#### 2. RAGAS judge throttling — đã có script chạy subset với backoff
+
+Trước v6.3, RQ7 (notebook 07) chạy RAGAS một lần lên toàn bộ 25 câu × 4 metric → ~6 000 judge calls trong vài phút → throttle 93.5%, NaN toàn bộ.
+
+Sửa: thêm [research/scripts/rq7_ragas_subset.py](../research/scripts/rq7_ragas_subset.py) với 3 cải tiến:
+
+1. **Subset nhỏ** (default `--n 5`) → ~1 200 judge calls, vừa với free-tier.
+2. **Retry exponential backoff** trên 429/quota — `8 → 16 → 32 → 64s` cho mỗi metric, 4 lần.
+3. **Sleep giữa metrics** (`--sleep 8`) để judge "nguội" giữa 4 lần `evaluate()`.
+
+Hệ quả: RAGAS giờ có thể chạy được trên free-tier, miễn là chấp nhận `n=5` thay vì `n=25` cho judge-based metrics. Lưu ý: subset không thay thế eval đầy đủ; chỉ giúp **không phải bỏ trắng RQ7**.
+
+#### 3. CI regression — `tests/` không còn rỗng, có gate quality
+
+Trước v6.3: thư mục `tests/` không có `.py` test nào, không `pytest.ini`, không CI workflow.
+
+Sửa: thêm 4 file:
+- [`pytest.ini`](../pytest.ini) — config marker `requires_qdrant` cho test có dependency.
+- [`tests/conftest.py`](../tests/conftest.py) — fixture `qdrant_ready` auto-skip test nếu Qdrant unreachable (CI without docker-compose).
+- [`tests/test_smoke.py`](../tests/test_smoke.py) — 6 test luôn pass (import, eval set tồn tại, corpus tồn tại, pytest.ini, CI workflow tồn tại).
+- [`tests/test_retrieval_regression.py`](../tests/test_retrieval_regression.py) — chạy 5 query subset, **assert mean Recall@10 ≥ 0.40**. Float dưới ngưỡng = fail CI = block merge.
+- [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) — 2 job: smoke (luôn chạy) + regression (chạy với Qdrant docker service).
+
+Verify local: `pytest tests/ -v` → **7 passed in 16s** (gồm regression test với threshold gate).
+
+Effect cho thesis defense: khi mentor hỏi "lỡ thay embedding model thì sao biết quality regression?" → trả lời được "CI fail, vì threshold 0.40 sẽ trượt".
 
 ### 12.2 Hướng phát triển
 
 | Ưu tiên | Mục                                         | Dự kiến                |
 | ------- | ------------------------------------------- | ---------------------- |
-| P0      | BGE-reranker-v2 sau RRF                     | R@10 +5-8pt            |
+| P0      | Triển khai reranker production (GPU node hoặc `bge-reranker-base`) | giữ MRR +21.6% với latency &lt;3s |
 | P0      | Gold dataset 200 câu                        | khoảng tin cậy chặt    |
+| P0      | Chạy `rq7_ragas_subset.py` đến hoàn thành (cần API quota khả dụng) | có 4 RAGAS metrics cho subset |
 | P1      | Prompt caching Gemini                       | −30% cost              |
 | P1      | Fine-tune e5-small trên (query, khoản) pair | MRR +5pt               |
+| P1      | Mở rộng `tests/test_retrieval_regression.py` lên 25 câu + thêm gate MRR/Cit-R | full coverage CI |
 | P2      | Multi-hop reasoning (Điều A → B → C)        | Cit-R cho cross-ref    |
 | P2      | Judge đa model (GPT-4 + Claude + Gemini)    | giảm bias              |
+| P2      | `/metrics` Prometheus-compatible (text/plain) | scrape được Grafana   |
 | P3      | Web UI React thay Streamlit                 | UX tốt hơn             |
 | P3      | Mobile app                                  | expose qua API gateway |
 
@@ -2210,7 +2440,30 @@ Từ 500 run thực trong project `Traffic-RAG-Evaluation`:
 
 ## 13. Phụ lục
 
-### 13.1 Changelog v5.5 → v6.0 → v6.1 → v6.2
+### 13.1 Changelog v5.5 → v6.0 → v6.1 → v6.2 → v6.3
+
+#### v6.3 (05/05/2026) — Reranker + observability + RAGAS subset + CI regression
+
+**Bối cảnh:** Phản hồi mentor chỉ ra 4 nhược điểm: thiếu reranker, tracing partly optional, RAGAS throttle, không CI. Bản v6.3 khắc phục cả 4.
+
+**Thay đổi 1 — Cross-encoder reranker (opt-in):**
+- Thêm module [source/rag_core/reranker.py](../source/rag_core/reranker.py) — wrap `sentence_transformers.CrossEncoder`, lazy-load `BAAI/bge-reranker-v2-m3` (568M, multilingual, max_length=8192).
+- Wire vào [TrafficHybridRetriever](../source/rag_core/retriever.py): RRF fuse top-N=30 → reranker rescore → top-K → siblings.
+- Bật ở [api/main.py](../api/main.py) qua env `ENABLE_RERANKER` / `RERANK_TOP_N` / `RERANKER_MODEL`.
+- Thêm [research/scripts/rq10_reranker_ablation.py](../research/scripts/rq10_reranker_ablation.py) — ablation 25 gold questions × 2 mode.
+- **Kết quả RQ10:** MRR **+21.6%** (0.201 → 0.244), nDCG@10 **+14.9%** (0.234 → 0.269), Recall@10 -3.7% (noise n=25). Latency ×78 trên CPU. Default off; chi tiết §6.4.6 + §11.6 + §6.4.6.6 (decision matrix).
+
+**Thay đổi 2 — Tracing always-on + /metrics endpoint:**
+- `api/main.py` lifespan tự gọi `enable_tracing()`; có `LANGCHAIN_API_KEY` → bật, không có → log warning rồi tiếp tục. Không còn "partly optional".
+- Thêm endpoint `GET /metrics` trả JSON: uptime, request count, error count, avg latency, tracing flag, reranker flag. Production deploy có quan sát được mà không cần đọc log.
+
+**Thay đổi 3 — RAGAS subset với backoff:**
+- Thêm [research/scripts/rq7_ragas_subset.py](../research/scripts/rq7_ragas_subset.py): chạy RAGAS trên `--n 5` câu (thay vì 25), retry exponential backoff 8/16/32/64s trên 429, sleep 8s giữa metrics. Chạy được trên free-tier mà không bị throttle.
+
+**Thay đổi 4 — CI + regression gate:**
+- Thêm [pytest.ini](../pytest.ini), [tests/conftest.py](../tests/conftest.py), [tests/test_smoke.py](../tests/test_smoke.py) (6 unit), [tests/test_retrieval_regression.py](../tests/test_retrieval_regression.py) (assert mean Recall@10 ≥ 0.40).
+- Thêm [.github/workflows/ci.yml](../.github/workflows/ci.yml) — 2 job: smoke (luôn chạy, không cần Qdrant) + regression (start Qdrant docker service).
+- Verify local: `pytest tests/` → **7 passed in 16s**.
 
 #### v6.2 (26/04/2026) — Frontend migration + HITL admin console
 

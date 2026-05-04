@@ -2,5 +2,11 @@
 
 from .retriever import TrafficHybridRetriever
 from .generator import LegalAnswerGenerator
+from .reranker import Reranker, DEFAULT_RERANKER_MODEL
 
-__all__ = ["TrafficHybridRetriever", "LegalAnswerGenerator"]
+__all__ = [
+    "TrafficHybridRetriever",
+    "LegalAnswerGenerator",
+    "Reranker",
+    "DEFAULT_RERANKER_MODEL",
+]

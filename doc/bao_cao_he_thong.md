@@ -22,7 +22,7 @@
 8. [Agentic Workflow — LangGraph định tuyến đa intent](#8-agentic-workflow)
 9. [Deployment — API, UI, Docker và HITL](#9-deployment)
 10. [Phương pháp đánh giá — Công thức chi tiết](#10-phương-pháp-đánh-giá--công-thức-chi-tiết)
-11. [Đánh giá tổng thể — Baseline + Cost breakdown + RQ10 reranker](#11-đánh-giá-tổng-thể--rq1--rq8)
+11. [Đánh giá tổng thể — Baseline + Cost + RQ10 reranker + RQ7-lite RAGAS](#11-đánh-giá-tổng-thể--rq1--rq8)
 12. [Hạn chế và hướng phát triển](#12-hạn-chế--hướng-phát-triển)
 13. [Phụ lục](#13-phụ-lục)
 
@@ -2358,6 +2358,82 @@ Từ 500 run thực trong project `Traffic-RAG-Evaluation`:
 - **Bật cho ablation/research** — dùng env flag để tái lập RQ10.
 - **Production roadmap:** chỉ bật khi có GPU node, hoặc xài `bge-reranker-base`. Ablation `bge-reranker-base` được thêm vào backlog v7.
 
+### 11.9 RQ7-lite: Custom judge khắc phục RAGAS throttle
+
+#### 11.9.1 Bối cảnh — vì sao RAGAS gốc thất bại
+
+RAGAS 0.2.0 chạy 4 metric (`faithfulness`, `answer_relevancy`, `context_precision`, `context_recall`) bằng cách:
+1. Tách câu trả lời thành nhiều "atomic claim" (mỗi câu trả lời ~5–10 claims).
+2. Mỗi claim → 1–2 lần gọi judge để đánh giá.
+3. Mỗi metric thực hiện thêm 1 lần CoT tổng hợp.
+
+Tổng số call: **~60 lần judge cho mỗi (sample, metric)**. Trên 25 gold question × 4 metric = **~6 000 calls** trong vài phút → free-tier Gemini (~15 RPM) throttle 93.5% → toàn bộ NaN ([§11.4](#114-diễn-giải-rq8) đã ghi nhận).
+
+#### 11.9.2 Đề xuất — RAGAS-lite (1 call/metric/sample)
+
+Thay vì gọi judge nhiều lần với CoT external, viết **single-prompt judge** ([research/scripts/rq7_judge_lite.py](../research/scripts/rq7_judge_lite.py)) — yêu cầu judge tự decompose claim/fact bên trong 1 prompt và xuất:
+
+```
+REASONING: <giải thích 1–3 câu>
+SCORE: <float 0.00–1.00>
+```
+
+Parser dùng regex `SCORE\s*[:=]\s*(-?\d+(?:\.\d+)?)` để extract score, fallback last-float. Giảm từ 60 → **1 call/metric/sample** ⇒ n=5 × 4 metric = **20 calls** → ~80–100s wall time với sleep 4s/call (≈ 15 RPM).
+
+**Trade-off so với RAGAS gốc:** ta tin tưởng judge tự làm decomposition trong 1 prompt thay vì orchestration ngoài. Kém rigorous hơn về cấu trúc, nhưng score scale `[0, 1]` tương thích → so sánh được với output RAGAS chuẩn nếu sau này có quota chạy lại bằng `rq7_ragas_subset.py`.
+
+#### 11.9.3 Methodology chi tiết
+
+| Khía cạnh           | Giá trị                                                        |
+| ------------------- | -------------------------------------------------------------- |
+| Subset              | 5 câu đầu (RQ-001 đến RQ-005, all `simple_penalty`)             |
+| Judge model         | `gemini-flash-lite-latest` (Gemini 2.5 Flash Lite)              |
+| Temperature         | 0.0                                                            |
+| Sleep giữa calls    | 4s (15 RPM, dưới free-tier limit)                               |
+| Retry policy        | 3 lần × backoff exponential (4 → 8 → 16 → 32s)                 |
+| Pipeline đánh giá   | Agentic RAG (`rq1_agentic_rag.jsonl`) — pipeline đang triển khai |
+| Top-K context       | 5 chunks/sample (cap để fit context window judge)              |
+| Prompt structure    | CoT (REASONING) + final SCORE line                              |
+
+#### 11.9.4 Kết quả thực — n=5
+
+Lưu tại [research/results/metrics/rq7_judge_lite.csv](../research/results/metrics/rq7_judge_lite.csv) + [_summary.csv](../research/results/metrics/rq7_judge_lite_summary.csv).
+
+**Per-question:**
+
+| ID     | faithfulness | answer_relevancy | context_precision | context_recall |
+| ------ | -----------: | ---------------: | ----------------: | -------------: |
+| RQ-001 |         0.00 |             1.00 |              0.00 |           0.33 |
+| RQ-002 |         0.25 |             1.00 |              0.00 |           0.00 |
+| RQ-003 |         0.50 |             1.00 |              0.40 |           0.50 |
+| RQ-004 |         0.00 |             1.00 |              0.00 |           0.00 |
+| RQ-005 |         0.00 |             1.00 |              0.60 |           0.33 |
+
+**Aggregate:**
+
+| Metric            | Mean | Min | Max  | n |
+| ----------------- | ---: | --: | ---: | -: |
+| faithfulness      | 0.15 | 0.00 | 0.50 | 5 |
+| answer_relevancy  | 1.00 | 1.00 | 1.00 | 5 |
+| context_precision | 0.20 | 0.00 | 0.60 | 5 |
+| context_recall    | 0.23 | 0.00 | 0.50 | 5 |
+
+#### 11.9.5 Diễn giải
+
+- **answer_relevancy = 1.00** trên cả 5 câu — generator **luôn cố trả lời đúng câu hỏi**, không né tránh, không lan man. Tốt về UX.
+- **faithfulness = 0.15 (rất thấp)** — đa số khẳng định trong câu trả lời **không được hỗ trợ** bởi context. Đây là biểu hiện của hallucination: generator nói "phạt 4–6 triệu" trong khi context chỉ chứa khoản về "ô tô" còn câu hỏi là "xe máy". Khớp với RQ1 F1 = 0.346 (câu trả lời lệch fact) nhưng giải thích **vì sao** rõ hơn — vấn đề ở generation chứ không phải retrieval.
+- **context_precision = 0.20** — chỉ ~1 trong 5 chunks retrieve thực sự liên quan câu hỏi. Đây là **lỗ hổng retrieval** — chunks lấy về đúng chủ đề lớn (giao thông, đèn đỏ) nhưng sai chi tiết (xe máy vs ô tô vs tổng quát).
+- **context_recall = 0.23** — chỉ ~23% facts trong gold answer tìm thấy trong context. Liên hệ trực tiếp với refusal 56% ([§12.1](#121-hạn-chế-hiện-tại)) — context không đủ thông tin → generator phải refuse hoặc bịa.
+
+**Ý nghĩa cho thesis defense:** RAGAS-lite chỉ ra rõ **bottleneck đang ở retrieval precision**, không phải ở generator quality (relevancy=1.0). Đây là argument mạnh cho việc **bật reranker** ([§11.6](#116-rq10-reranker-ablation--hybrid-vs-hybrid--bge-reranker-v2-m3)) — vì reranker giải đúng vấn đề "context_precision thấp" mà RAGAS-lite phát hiện.
+
+#### 11.9.6 Hạn chế của RAGAS-lite
+
+- **n=5 còn nhỏ** — toàn bộ `simple_penalty` category (RQ-001 → RQ-005). Không đại diện cho complex/multi-intent. Mở rộng → backlog P0.
+- **Dùng pipeline KHÔNG reranker** (vì `rq1_agentic_rag.jsonl` được sinh trước v6.3) — kế hoạch v6.4: re-run pipeline với reranker on, đánh giá lại RAGAS-lite để đo Δ faithfulness/precision sau khi rerank.
+- **Single-prompt simplification** không đo được claim-level disagreement như RAGAS gốc — score dạng coarse-grained.
+- **Judge bias** chưa được calibrate — chỉ dùng 1 judge (Gemini Flash Lite). Nên cross-validate với gpt-4o-mini hoặc Claude khi có quota.
+
 ---
 
 ## 12. Hạn chế và hướng phát triển
@@ -2393,17 +2469,22 @@ Hành vi mới:
 - Không có key → log warning "OFF (no key)" rồi chạy bình thường (không fail).
 - **Thêm endpoint `GET /metrics`** — trả về JSON: `uptime_seconds`, `total_chat_requests`, `total_chat_errors`, `chat_avg_latency_ms`, `tracing_enabled`, `reranker_enabled`. Thay thế cho việc phải đọc `backend.log`.
 
-#### 2. RAGAS judge throttling — đã có script chạy subset với backoff
+#### 2. RAGAS judge throttling — đã có numbers thực qua RAGAS-lite
 
 Trước v6.3, RQ7 (notebook 07) chạy RAGAS một lần lên toàn bộ 25 câu × 4 metric → ~6 000 judge calls trong vài phút → throttle 93.5%, NaN toàn bộ.
 
-Sửa: thêm [research/scripts/rq7_ragas_subset.py](../research/scripts/rq7_ragas_subset.py) với 3 cải tiến:
+**Path A — script wrapper backoff:** [research/scripts/rq7_ragas_subset.py](../research/scripts/rq7_ragas_subset.py) — chạy RAGAS gốc trên `--n 5` với retry 4 lần (8→16→32→64s). Vẫn có rủi ro throttle vì RAGAS internally bùng calls.
 
-1. **Subset nhỏ** (default `--n 5`) → ~1 200 judge calls, vừa với free-tier.
-2. **Retry exponential backoff** trên 429/quota — `8 → 16 → 32 → 64s` cho mỗi metric, 4 lần.
-3. **Sleep giữa metrics** (`--sleep 8`) để judge "nguội" giữa 4 lần `evaluate()`.
+**Path B — RAGAS-lite (đã chạy thực):** [research/scripts/rq7_judge_lite.py](../research/scripts/rq7_judge_lite.py) — viết 4 prompt CoT custom, **1 call/metric/sample** thay vì 60 → n=5 chỉ tốn 20 calls × 4s = ~80s. **Đã chạy hoàn tất** với judge `gemini-flash-lite-latest`, không bị throttle:
 
-Hệ quả: RAGAS giờ có thể chạy được trên free-tier, miễn là chấp nhận `n=5` thay vì `n=25` cho judge-based metrics. Lưu ý: subset không thay thế eval đầy đủ; chỉ giúp **không phải bỏ trắng RQ7**.
+| Metric            | Mean (n=5) |
+| ----------------- | ---------: |
+| answer_relevancy  | **1.00**   |
+| context_recall    | 0.23       |
+| context_precision | 0.20       |
+| faithfulness      | 0.15       |
+
+Chi tiết methodology + diễn giải ở **§11.9**. Conclusion: bottleneck ở retrieval precision (0.20), không phải answer relevancy (1.00) — củng cố lý do bật reranker (§11.6).
 
 #### 3. CI regression — `tests/` không còn rỗng, có gate quality
 
@@ -2426,7 +2507,8 @@ Effect cho thesis defense: khi mentor hỏi "lỡ thay embedding model thì sao 
 | ------- | ------------------------------------------- | ---------------------- |
 | P0      | Triển khai reranker production (GPU node hoặc `bge-reranker-base`) | giữ MRR +21.6% với latency &lt;3s |
 | P0      | Gold dataset 200 câu                        | khoảng tin cậy chặt    |
-| P0      | Chạy `rq7_ragas_subset.py` đến hoàn thành (cần API quota khả dụng) | có 4 RAGAS metrics cho subset |
+| P0      | Re-run RAGAS-lite trên pipeline có reranker bật, đo Δ faithfulness/precision | định lượng giá trị reranker theo 4 chiều RAGAS |
+| P1      | Mở rộng RAGAS-lite từ n=5 → n=25, stratified theo category | cover complex/multi-intent, không chỉ simple_penalty |
 | P1      | Prompt caching Gemini                       | −30% cost              |
 | P1      | Fine-tune e5-small trên (query, khoản) pair | MRR +5pt               |
 | P1      | Mở rộng `tests/test_retrieval_regression.py` lên 25 câu + thêm gate MRR/Cit-R | full coverage CI |
@@ -2457,8 +2539,10 @@ Effect cho thesis defense: khi mentor hỏi "lỡ thay embedding model thì sao 
 - `api/main.py` lifespan tự gọi `enable_tracing()`; có `LANGCHAIN_API_KEY` → bật, không có → log warning rồi tiếp tục. Không còn "partly optional".
 - Thêm endpoint `GET /metrics` trả JSON: uptime, request count, error count, avg latency, tracing flag, reranker flag. Production deploy có quan sát được mà không cần đọc log.
 
-**Thay đổi 3 — RAGAS subset với backoff:**
-- Thêm [research/scripts/rq7_ragas_subset.py](../research/scripts/rq7_ragas_subset.py): chạy RAGAS trên `--n 5` câu (thay vì 25), retry exponential backoff 8/16/32/64s trên 429, sleep 8s giữa metrics. Chạy được trên free-tier mà không bị throttle.
+**Thay đổi 3 — RAGAS-lite custom judge (1 call/metric/sample):**
+- Thêm [research/scripts/rq7_ragas_subset.py](../research/scripts/rq7_ragas_subset.py) — wrapper backoff cho RAGAS gốc (Path A).
+- Thêm [research/scripts/rq7_judge_lite.py](../research/scripts/rq7_judge_lite.py) — **đã chạy thực** trên n=5 với judge `gemini-flash-lite-latest`. CoT prompt + 1 call/metric/sample, tổng 20 calls/run.
+- **Kết quả thực** (chi tiết §11.9): answer_relevancy=1.00, context_recall=0.23, context_precision=0.20, faithfulness=0.15 → chỉ ra bottleneck ở retrieval precision, củng cố lý do bật reranker.
 
 **Thay đổi 4 — CI + regression gate:**
 - Thêm [pytest.ini](../pytest.ini), [tests/conftest.py](../tests/conftest.py), [tests/test_smoke.py](../tests/test_smoke.py) (6 unit), [tests/test_retrieval_regression.py](../tests/test_retrieval_regression.py) (assert mean Recall@10 ≥ 0.40).

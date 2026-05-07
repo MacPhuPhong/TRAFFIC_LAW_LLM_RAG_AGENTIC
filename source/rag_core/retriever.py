@@ -20,6 +20,16 @@ from qdrant_client.http.models import Filter, FieldCondition, MatchValue
 from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
 
+try:
+    from langsmith import traceable as _ls_traceable
+except ImportError:  # langsmith not installed → no-op decorator
+    def _ls_traceable(*dargs, **dkwargs):
+        if dargs and callable(dargs[0]) and not dkwargs:
+            return dargs[0]
+        def _wrap(fn):
+            return fn
+        return _wrap
+
 logger = logging.getLogger(__name__)
 
 
@@ -111,6 +121,7 @@ class TrafficHybridRetriever:
 
     # --- public API ---------------------------------------------------------
 
+    @_ls_traceable(run_type="retriever", name="TrafficHybridRetriever.get_relevant_chunks")
     def get_relevant_chunks(
         self,
         query: str,
@@ -383,6 +394,7 @@ class TrafficHybridRetriever:
 
     # --- RRF fusion ---------------------------------------------------------
 
+    @_ls_traceable(run_type="tool", name="rrf_fuse")
     def _rrf_fuse(
         self, dense_hits, bm25_hits, top_k: int
     ) -> list[RetrievedChunk]:

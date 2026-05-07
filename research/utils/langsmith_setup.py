@@ -56,3 +56,33 @@ def enable_tracing(
 
 def disable_tracing() -> None:
     os.environ["LANGCHAIN_TRACING_V2"] = "false"
+
+
+def verify_connection() -> dict:
+    """Smoke-test the LangSmith connection.
+
+    Returns {"ok": bool, "project": str, "url": str | None, "error": str | None}.
+    Useful from a notebook to confirm credentials are wired correctly before
+    burning a long eval run.
+    """
+    _load_env()
+    api_key = os.getenv("LANGCHAIN_API_KEY") or os.getenv("LANGSMITH_API_KEY")
+    project = os.getenv("LANGCHAIN_PROJECT", "default")
+    if not api_key:
+        return {"ok": False, "project": project, "url": None,
+                "error": "LANGCHAIN_API_KEY missing"}
+    try:
+        from langsmith import Client
+    except ImportError:
+        return {"ok": False, "project": project, "url": None,
+                "error": "pip install langsmith"}
+    try:
+        client = Client(api_key=api_key)
+        # Cheap call that exercises auth without listing every run.
+        list(client.list_projects(limit=1))
+        return {"ok": True, "project": project,
+                "url": f"https://smith.langchain.com/o/-/projects/p/{project}",
+                "error": None}
+    except Exception as exc:
+        return {"ok": False, "project": project, "url": None,
+                "error": f"{type(exc).__name__}: {exc}"}

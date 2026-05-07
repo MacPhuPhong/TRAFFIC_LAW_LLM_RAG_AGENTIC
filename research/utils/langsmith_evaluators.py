@@ -136,7 +136,9 @@ CÂU TRẢ LỜI:
 {answer}"""
 
 
-def faithfulness_evaluator(run, example) -> dict:
+def faithfulness_evaluator(run, _example) -> dict:
+    # `_example` is required by the LangSmith evaluator signature but unused —
+    # faithfulness compares answer ↔ contexts, not against the gold reference.
     out = _outputs(run)
     answer = (out.get("answer") or "").strip()
     contexts = out.get("contexts") or []
@@ -199,20 +201,53 @@ def answer_correctness_evaluator(run, example) -> dict:
 # ---------------------------------------------------------------------------
 
 def _normalize_citation(c: dict) -> tuple:
-    """Hash key for citation comparison: (doc_id, dieu, khoan, diem)."""
+    """Tuple form for citation comparison.
+
+    Empty/missing fields collapse to None so a gold citation that omits
+    `khoan`/`diem` (because the question is "loose") still matches any
+    predicted citation under the same (doc_id, dieu).
+    """
+    def _norm(v, lower=False):
+        if v in (None, ""):
+            return None
+        s = str(v).strip()
+        return s.lower() if lower else s
     return (
-        str(c.get("doc_id", "")).strip().lower(),
-        str(c.get("dieu", "")).strip(),
-        str(c.get("khoan", "")).strip() if c.get("khoan") not in (None, "") else "",
-        str(c.get("diem", "")).strip().lower() if c.get("diem") not in (None, "") else "",
+        _norm(c.get("doc_id"), lower=True),
+        _norm(c.get("dieu")),
+        _norm(c.get("khoan")),
+        _norm(c.get("diem"), lower=True),
     )
 
 
-def citation_correctness_evaluator(run, example) -> dict:
-    """Score = |predicted ∩ gold| / |gold|. Matches at (doc_id, dieu, khoan, diem).
+def _citation_match(gold: tuple, pred: tuple) -> str:
+    """Return 'exact' / 'partial' / 'none'.
 
-    Penalty 0 only if the model cited NO gold citation. We don't penalise
-    extra citations — over-citing is harmless, missing is not.
+    'exact'   = every non-empty gold field equals pred (gold ⊆ pred semantics)
+    'partial' = doc_id + dieu match, but a gold-specified khoan/diem differs
+    'none'    = doc_id or dieu mismatch
+    """
+    gd, gdi, gk, gdiem = gold
+    pd, pdi, pk, pdiem = pred
+    if gd is None or pd is None or gd != pd:
+        return "none"
+    if gdi is None or pdi is None or gdi != pdi:
+        return "none"
+    # doc_id + dieu match. Now check tighter fields ONLY where gold specifies them.
+    if gk is not None and gk != pk:
+        return "partial"
+    if gdiem is not None and gdiem != pdiem:
+        return "partial"
+    return "exact"
+
+
+def citation_correctness_evaluator(run, example) -> dict:
+    """For each gold citation: best match across all predictions = exact (1.0)
+    / partial (0.5) / none (0). Score = mean over gold citations.
+
+    Tolerant of `khoan`/`diem` being omitted from gold — those fields only
+    constrain matching when the gold actually specifies them. Avoids penalising
+    the model for being more specific than gold.
     """
     out = _outputs(run)
     pred = out.get("citations") or out.get("sources") or []
@@ -224,24 +259,36 @@ def citation_correctness_evaluator(run, example) -> dict:
         return {"key": "citation_correctness", "score": 0.0,
                 "comment": "model emitted no citations"}
 
-    gold_keys = {_normalize_citation(c) for c in gold}
-    pred_keys = {_normalize_citation(c) for c in pred}
+    gold_tuples = [_normalize_citation(c) for c in gold]
+    pred_tuples = [_normalize_citation(c) for c in pred]
 
-    # Tier 1: exact match on (doc_id, dieu, khoan, diem)
-    exact = gold_keys & pred_keys
-    # Tier 2: looser match on (doc_id, dieu, khoan) — partial credit 0.5
-    gold_dkk = {(d, dieu, k) for (d, dieu, k, _) in gold_keys}
-    pred_dkk = {(d, dieu, k) for (d, dieu, k, _) in pred_keys}
-    partial = (gold_dkk & pred_dkk) - {(d, dieu, k) for (d, dieu, k, _) in exact}
+    n_exact = 0
+    n_partial = 0
+    n_miss = 0
+    for g in gold_tuples:
+        best = "none"
+        for p in pred_tuples:
+            m = _citation_match(g, p)
+            if m == "exact":
+                best = "exact"
+                break
+            if m == "partial" and best != "exact":
+                best = "partial"
+        if best == "exact":
+            n_exact += 1
+        elif best == "partial":
+            n_partial += 1
+        else:
+            n_miss += 1
 
-    score = (len(exact) + 0.5 * len(partial)) / max(len(gold_keys), 1)
+    score = (n_exact + 0.5 * n_partial) / max(len(gold_tuples), 1)
     score = max(0.0, min(1.0, score))
     return {
         "key": "citation_correctness",
         "score": round(score, 3),
-        "comment": (f"exact={len(exact)}/{len(gold_keys)}, "
-                    f"partial(diem mismatch)={len(partial)}, "
-                    f"pred={len(pred_keys)}"),
+        "comment": (f"exact={n_exact}/{len(gold_tuples)}, "
+                    f"partial={n_partial}, miss={n_miss}, "
+                    f"pred_total={len(pred_tuples)}"),
     }
 
 

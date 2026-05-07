@@ -35,10 +35,10 @@ QUY TẮC BẮT BUỘC:
    - BẮT BUỘC **in đậm** các con số quan trọng: Mức phạt tiền, Số điểm GPLX bị trừ, Thời gian bị tước quyền sử dụng.
    - MỖI hành vi / mỗi ý phải nằm trên DÒNG RIÊNG BIỆT (dùng danh sách bullet `- `).
 
-   ❌ SAI (Văn bản phẳng, khó đọc):
+    SAI (Văn bản phẳng, khó đọc):
    "1. Buông cả hai tay khi điều khiển xe phạt từ 10.000.000 đồng đến 12.000.000 đồng và trừ 12 điểm [Điều 7, Khoản 11 — NĐ 168]."
 
-   ✅ ĐÚNG (Có phân cấp Heading và in đậm rõ ràng):
+    ĐÚNG (Có phân cấp Heading và in đậm rõ ràng):
    "### 1. Phạt đối với xe mô tô, xe gắn máy
    - Hành vi **buông cả hai tay** khi đang điều khiển xe; dùng chân điều khiển xe: Phạt tiền từ **10.000.000 đồng** đến **12.000.000 đồng** + trừ **12 điểm** GPLX [Điều 7, Khoản 11, Điểm a — NĐ 168/2024/NĐ-CP]
 
@@ -71,10 +71,10 @@ QUY TẮC PHÂN BIỆT NGỮ CẢNH:
     TUYỆT ĐỐI KHÔNG BAO GIỜ chỉ trích dẫn mã Điều/Khoản/Điểm mà không giải thích nội dung.
     Người dùng là CÔNG DÂN BÌNH THƯỜNG, không phải luật sư — họ cần biết hành vi cụ thể.
 
-    ❌ SAI (KHÔNG BAO GIỜ viết thế này):
+     SAI (KHÔNG BAO GIỜ viết thế này):
     "Tạm giữ phương tiện đối với hành vi quy định tại điểm a khoản 4 Điều 13"
 
-    ✅ ĐÚNG (LUÔN LUÔN viết thế này):
+     ĐÚNG (LUÔN LUÔN viết thế này):
     "Tạm giữ phương tiện khi: Điều khiển xe không có giấy đăng ký xe hoặc giấy đăng ký xe đã hết hạn [Điều 13, Khoản 4, Điểm a — NĐ 168/2024/NĐ-CP]"
 
     QUY TẮC:
@@ -85,7 +85,7 @@ QUY TẮC PHÂN BIỆT NGỮ CẢNH:
 14. TƯ DUY LẬP LUẬN PHÂN ĐỊNH LỖI – ÁP DỤNG KHI CÂU HỎI HỎI "AI CÓ LỖI / LỖI DO AI
     / TRÁCH NHIỆM CỦA AI" TRONG VA CHẠM – TAI NẠN GIAO THÔNG.
 
-    ⚠️ KHI GẶP DẠNG CÂU HỎI NÀY, KHÔNG ÁP DỤNG QUY TẮC 4 (TỪ CHỐI). Lý do: văn
+    KHI GẶP DẠNG CÂU HỎI NÀY, KHÔNG ÁP DỤNG QUY TẮC 4 (TỪ CHỐI). Lý do: văn
     bản pháp luật KHÔNG bao giờ ghi sẵn "trong va chạm A và B thì A có lỗi" – kết
     luận lỗi luôn phải được SUY RA bằng cách chiếu hành vi của từng bên vào quy
     định cấm. Đây không phải bịa đặt mà là LẬP LUẬN PHÁP LÝ – được phép.
@@ -119,7 +119,7 @@ QUY TẮC PHÂN BIỆT NGỮ CẢNH:
     Ngữ cảnh chứa: NĐ 168/2024 Điều 6 (phạt đi ngược chiều ô tô), Điều 6
     (phạt chạy quá tốc độ), Luật 36/2024 Điều 11 (đi đúng chiều đường).
 
-    ✅ Câu trả lời ĐÚNG (Markdown gọn, theo Quy tắc 6):
+     Câu trả lời ĐÚNG (Markdown gọn, theo Quy tắc 6):
 
     ### Phân tích lỗi va chạm
 
@@ -279,10 +279,14 @@ class LegalAnswerGenerator:
     def _extract_cited_sources(answer: str, chunks: list[dict]) -> list[dict]:
         """Return chunk metadata for every doc_id the answer cites.
 
-        Recognises three citation formats the model tends to emit:
+        Recognises four citation formats the model tends to emit:
           1. `(168/2024/NĐ-CP)` — parentheses per the prompted format.
           2. `[168/2024/NĐ-CP]` — square brackets (LLM often substitutes).
           3. Naked `168/2024/NĐ-CP` inside free text.
+          4. Natural-language name like `Luật Trật tự ATGT đường bộ 2024` —
+             matched against `ten_van_ban` of any chunk in the working set.
+             This catches Vietnamese laws (QH15) where the LLM rarely emits
+             the formal `36/2024/QH15` slug.
         """
         bracketed = re.findall(
             r"[\(\[]\s*([^()\[\]]+?/[^()\[\]]+?)\s*[\)\]]", answer
@@ -290,6 +294,21 @@ class LegalAnswerGenerator:
         cited_doc_ids = set(bracketed)
         for m in re.finditer(r"\b(\d+/\d{4}/[A-ZĐ\-]+)\b", answer):
             cited_doc_ids.add(m.group(1))
+
+        # Format (4): match by ten_van_ban substring (case-insensitive).
+        # We collect (name → doc_id) from the chunks themselves so the lookup
+        # stays bounded to the documents actually retrieved for this answer.
+        answer_lower = answer.lower()
+        for c in chunks:
+            meta = c.get("metadata", {})
+            name = (meta.get("ten_van_ban") or "").strip()
+            did = meta.get("doc_id", "")
+            if not name or not did or did in cited_doc_ids:
+                continue
+            # Strip parenthetical suffix like "Luật ATGT 2024 (Số 36/2024/QH15)"
+            short_name = re.sub(r"\s*\([^)]*\)\s*$", "", name).strip().lower()
+            if short_name and len(short_name) >= 8 and short_name in answer_lower:
+                cited_doc_ids.add(did)
 
         sources = []
         seen = set()

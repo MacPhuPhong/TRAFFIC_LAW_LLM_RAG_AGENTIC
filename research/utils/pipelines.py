@@ -129,13 +129,17 @@ class VanillaRAGPipeline:
         # Citations = các nguồn generator thực sự trích (có trong answer),
         # không phải toàn bộ chunks retrieve. So sánh công bằng với agentic_rag.
         citations = gen_out.get("sources") or []
+        # Surface chunks (with metadata) in `raw` so downstream eval/inspection
+        # can match by (doc_id, dieu, ...) instead of regex on free text.
+        raw = dict(gen_out)
+        raw["chunks"] = chunk_dicts
         return PipelineResult(
             answer=gen_out.get("answer", ""),
             contexts=contexts,
             citations=citations,
             category="legal_rag",
             latency_s=dt,
-            raw=gen_out,
+            raw=raw,
         )
 
 

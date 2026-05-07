@@ -204,9 +204,33 @@ def step4_evaluate(dataset_name: str, n: int, experiment_prefix: str,
 
     def target(inputs: dict) -> dict:
         result = pipe.run(inputs["question"])
+        # Preserve chunk metadata (doc_id, dieu, khoan, ...) so evaluators can
+        # match (doc_id, dieu) directly without parsing free text. Falls back
+        # to plain content strings only if the pipeline didn't surface raw
+        # chunks.
+        contexts = []
+        raw_chunks = (result.raw or {}).get("chunks") if result.raw else None
+        if raw_chunks:
+            for c in raw_chunks:
+                if isinstance(c, dict):
+                    contexts.append({
+                        "content":  c.get("content", ""),
+                        "metadata": c.get("metadata", {}),
+                    })
+                elif hasattr(c, "to_dict"):
+                    d = c.to_dict()
+                    contexts.append({
+                        "content":  d.get("content", ""),
+                        "metadata": d.get("metadata", {}),
+                    })
+                elif hasattr(c, "content"):
+                    md = getattr(c, "metadata", None) or {}
+                    contexts.append({"content": c.content, "metadata": md})
+        if not contexts:
+            contexts = [{"content": c} for c in result.contexts]
         return {
             "answer":     result.answer,
-            "contexts":   [{"content": c} for c in result.contexts],
+            "contexts":   contexts,
             "citations":  result.citations,
             "category":   result.category,
         }
@@ -222,7 +246,7 @@ def step4_evaluate(dataset_name: str, n: int, experiment_prefix: str,
         data=examples,
         evaluators=evaluators,
         experiment_prefix=experiment_prefix,
-        max_concurrency=2,
+        max_concurrency=int(os.getenv("LANGSMITH_DEMO_CONCURRENCY", "1")),
     )
     log.info("eval done — view results at: %s",
              getattr(results, "experiment_url", None) or

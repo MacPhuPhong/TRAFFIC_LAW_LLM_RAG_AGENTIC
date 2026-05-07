@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Indexer for the fixed-size chunk ablation (RQ2).
 
-Loads Data/all_chunks_fixed512.jsonl, embeds with `intfloat/multilingual-e5-small`
+Loads research/rq2_chunking/data/all_chunks_fixed512.jsonl, embeds with `intfloat/multilingual-e5-small`
 (max_seq=512 — no truncation on 512-token chunks), upserts to collection
 `traffic_law_fixed512`. Deliberately disables BM25 when loaded via the
 retriever; we only benchmark dense retrieval for the ablation.
@@ -34,7 +34,7 @@ VECTOR_SIZE = 384  # e5-small dim
 BATCH_EMBED = 64
 BATCH_UPSERT = 100
 
-JSONL_PATH = BASE_DIR / "Data" / "all_chunks_fixed512.jsonl"
+JSONL_PATH = Path(__file__).resolve().parent / "data" / "all_chunks_fixed512.jsonl"
 
 LOG_DIR = BASE_DIR / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)

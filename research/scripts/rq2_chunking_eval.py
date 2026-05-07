@@ -167,7 +167,7 @@ def main():
     r_fixed = TrafficHybridRetriever(
         collection_name="traffic_law_fixed512",
         embedding_model="intfloat/multilingual-e5-small",
-        jsonl_path=str(ROOT / "Data" / "all_chunks_fixed512.jsonl"),
+        jsonl_path=str(ROOT / "research" / "rq2_chunking" / "data" / "all_chunks_fixed512.jsonl"),
     )
     _e5_query_wrap(r_fixed)
     ret_fixed = run_retrieval("fixed_512", r_fixed, gold)

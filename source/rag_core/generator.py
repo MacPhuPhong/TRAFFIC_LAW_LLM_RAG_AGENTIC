@@ -124,7 +124,7 @@ QUY TẮC PHÂN BIỆT NGỮ CẢNH:
     ### Phân tích lỗi va chạm
 
     **Bước 1 – Hành vi của hai bên:**
-    - Bên A (bạn): **đi ngược chiều**.
+    - Bên A: **đi ngược chiều**.
     - Bên B: **chạy quá tốc độ quy định**.
 
     **Bước 2 – Đối chiếu quy định:**

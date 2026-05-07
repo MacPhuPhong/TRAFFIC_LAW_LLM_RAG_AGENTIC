@@ -15,7 +15,6 @@ from typing import Callable
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
-from .router import build_router
 from .state import AgentState, Category
 
 

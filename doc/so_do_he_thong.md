@@ -39,7 +39,7 @@ flowchart LR
 
     G["☁️ Google Gemini API<br/>2.5 Flash (LLM gen)"]:::external
     T["☁️ Tavily API<br/>Web search fallback"]:::external
-    L["☁️ LangSmith<br/>Tracing &amp; eval"]:::external
+    L["☁️ LangSmith<br/>Tracing & eval"]:::external
 
     U -->|"Hỏi mức phạt /<br/>tra điều luật"| SYS
     SYS -->|"Câu trả lời<br/>+ citations"| U
@@ -84,7 +84,7 @@ flowchart TB
         end
 
         RET["TrafficHybridRetriever<br/>──────────<br/>Dense E5 ⊕ BM25<br/>+ Sibling ±2 + Cross-ref"]:::agent
-        GEN["LegalAnswerGenerator<br/>──────────<br/>SYSTEM_PROMPT v6.1<br/>+ citation sanitation"]:::agent
+        GEN["LegalAnswerGenerator<br/>──────────<br/>SYSTEM_PROMPT <br/>+ citation sanitation"]:::agent
 
         QD[("Qdrant 1.7<br/>(6333)<br/>collection:<br/>Traffic_Law_Hybrid<br/>2 818 vectors")]:::store
         CKPT[("SQLite<br/>checkpoints/graph.db<br/>(LangGraph state)")]:::store
@@ -92,7 +92,7 @@ flowchart TB
     end
 
     subgraph Cloud["☁️ External"]
-        GEMINI["Google Gemini<br/>2.5 Flash"]:::ext
+        GEMINI["Google Gemini<br/>3.1 Flash"]:::ext
         TAVILY["Tavily Search"]:::ext
         LSMITH["LangSmith<br/>traffic-rag-prod"]:::ext
     end
@@ -165,6 +165,7 @@ flowchart TD
 ```
 
 **Đặc điểm quan trọng:**
+
 - **Idempotent:** chạy lại với `--recreate` sẽ xoá collection và build lại từ đầu, không nhân đôi vector.
 - **Hierarchy preserved:** mỗi chunk giữ `{doc_id, dieu, khoan, diem, page, effective_date}` để retrieval lọc + citation chuẩn.
 - **Status-aware:** chunk thuộc Luật cũ hết hiệu lực được gắn `status="repealed"` và lọc khỏi search mặc định.
@@ -226,12 +227,12 @@ flowchart TD
 
 **4 nhánh phân loại theo `category`:**
 
-| Category | Khi nào | Output |
-|---|---|---|
-| `legal` | Câu hỏi về luật/nghị định/thông tư trong corpus | Answer + citations `[n]` → trust trực tiếp |
-| `chit_chat` | Lời chào, hỏi linh tinh | Trả lời ngắn từ Gemini, không retrieval |
-| `web_legal_search` | Câu hỏi pháp luật giao thông NHƯNG ngoài corpus (vd. phí đăng kiểm 2026) | Tavily → draft → **HITL pause** |
-| `out_of_scope` | Câu hỏi không thuộc phạm vi (vd. thời tiết) | Template refusal |
+| Category           | Khi nào                                                                  | Output                                     |
+| ------------------ | ------------------------------------------------------------------------ | ------------------------------------------ |
+| `legal`            | Câu hỏi về luật/nghị định/thông tư trong corpus                          | Answer + citations `[n]` → trust trực tiếp |
+| `chit_chat`        | Lời chào, hỏi linh tinh                                                  | Trả lời ngắn từ Gemini, không retrieval    |
+| `web_legal_search` | Câu hỏi pháp luật giao thông NHƯNG ngoài corpus (vd. phí đăng kiểm 2026) | Tavily → draft →**HITL pause**             |
+| `out_of_scope`     | Câu hỏi không thuộc phạm vi (vd. thời tiết)                              | Template refusal                           |
 
 ---
 
@@ -280,6 +281,7 @@ flowchart LR
 ```
 
 **Lý do chọn hybrid (RQ9):**
+
 - Dense one-shot bị miss khi query có biến thể từ ("vượt đèn đỏ" vs "không chấp hành tín hiệu giao thông").
 - BM25 one-shot bị miss khi query là paraphrase ("đậu xe sai chỗ" vs "dừng đỗ trên cầu").
 - RRF fuse 2 bảng xếp hạng (không cần normalise score) → MRR tăng so với dense-only.
@@ -363,10 +365,10 @@ stateDiagram-v2
 
 **Tại sao cần HITL ở `web_search` mà không phải `legal_rag`:**
 
-| Nhánh | Nguồn | Độ tin cậy | Cần duyệt? |
-|---|---|---|---|
-| `legal_rag` | Corpus chính thức (Luật, NĐ, TT) đã verify | Cao | ❌ trust thẳng |
-| `web_search` | Internet open (Tavily) | Thấp, có thể tin tức/blog sai | ✅ HITL |
+| Nhánh        | Nguồn                                      | Độ tin cậy                    | Cần duyệt?     |
+| ------------ | ------------------------------------------ | ----------------------------- | -------------- |
+| `legal_rag`  | Corpus chính thức (Luật, NĐ, TT) đã verify | Cao                           | ❌ trust thẳng |
+| `web_search` | Internet open (Tavily)                     | Thấp, có thể tin tức/blog sai | ✅ HITL        |
 
 **State persistence:** `SqliteSaver` lưu toàn bộ `AgentState` vào `checkpoints/graph.db` theo `thread_id`. Khi `/resume` được gọi với cùng `thread_id`, LangGraph load lại state và resume từ ngay sau `interrupt_before` → admin có thể đóng tab trình duyệt rồi mở lại sau cũng vẫn duyệt được.
 
@@ -436,7 +438,7 @@ classDiagram
     AgentState --> AnswerSource
 ```
 
-**Convention `chunk_id`:** `<doc_slug>_dieu<N>_khoan<K>_diem_<D>` cho phép debug bằng mắt mà không cần mở payload — ví dụ `168_2024_NĐ_CP_dieu6_khoan6_diem_c` đọc được luôn là *NĐ 168/2024 Điều 6 Khoản 6 Điểm c*.
+**Convention `chunk_id`:** `<doc_slug>_dieu<N>_khoan<K>_diem_<D>` cho phép debug bằng mắt mà không cần mở payload — ví dụ `168_2024_NĐ_CP_dieu6_khoan6_diem_c` đọc được luôn là _NĐ 168/2024 Điều 6 Khoản 6 Điểm c_.
 
 ---
 
@@ -495,6 +497,7 @@ flowchart TB
 ```
 
 **Lưu ý môi trường:**
+
 - File `.env` đặt ở **gốc repo** (`GitHub1/.env`), không trong `traffic_rag/`.
 - `requirements.txt` cũng ở gốc, không trong `traffic_rag/`.
 - Qdrant chạy trong Docker; Backend + Frontend chạy ngoài host (dev mode `--reload`).
@@ -504,7 +507,7 @@ flowchart TB
 
 ## 10. Sequence end-to-end
 
-Một câu hỏi *"Vượt đèn đỏ ô tô bị phạt bao nhiêu tiền?"* đi qua hệ thống:
+Một câu hỏi _"Vượt đèn đỏ ô tô bị phạt bao nhiêu tiền?"_ đi qua hệ thống:
 
 ```mermaid
 sequenceDiagram
@@ -614,6 +617,7 @@ flowchart LR
 ```
 
 **Hai vòng feedback:**
+
 - **Loop ngắn (CI):** mỗi PR chạy regression gate — nếu thay encoder/chunker mà MRR/Recall tụt dưới 0.40 → fail merge.
 - **Loop dài (production):** trace trên LangSmith giúp khám phá query thực tế bị refusal/sai citation → bổ sung vào `gold_25.jsonl` → ablation lại.
 

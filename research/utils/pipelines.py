@@ -220,7 +220,7 @@ class AgenticRAGPipeline:
 def _vanilla_fixed512(**kwargs):
     defaults = dict(
         collection_name="traffic_law_fixed512",
-        jsonl_path="/media/pphong/D:/Do_An_Tot_Nghiep/GitHub1/traffic_rag/Data/all_chunks_fixed512.jsonl",
+        jsonl_path="/media/pphong/D:/Do_An_Tot_Nghiep/GitHub1/traffic_rag/research/rq2_chunking/data/all_chunks_fixed512.jsonl",
         embedding_model="intfloat/multilingual-e5-small",
     )
     defaults.update(kwargs)

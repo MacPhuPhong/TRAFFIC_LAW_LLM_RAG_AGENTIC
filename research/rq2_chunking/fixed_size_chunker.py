@@ -135,8 +135,7 @@ def main():
         format="%(asctime)s [%(levelname)s] %(message)s",
     )
 
-    BASE = Path(__file__).resolve().parent.parent.parent
-    out_path = BASE / "Data" / "all_chunks_fixed512.jsonl"
+    out_path = Path(__file__).resolve().parent / "data" / "all_chunks_fixed512.jsonl"
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     chunker = FixedSizeChunker()

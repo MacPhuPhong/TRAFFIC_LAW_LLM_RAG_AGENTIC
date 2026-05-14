@@ -48,3 +48,7 @@ checkpoints/
 # Next.js
 app/nextjs-app/node_modules/
 app/nextjs-app/.next/
+
+# Documentation and Research
+doc/
+research/

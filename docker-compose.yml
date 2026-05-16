@@ -5,7 +5,7 @@ services:
     image: qdrant/qdrant:latest
     container_name: traffic_qdrant
     ports:
-      - "6334:6333"
+      - "6333:6333"
     volumes:
       - ./qdrant_storage:/qdrant/storage
 

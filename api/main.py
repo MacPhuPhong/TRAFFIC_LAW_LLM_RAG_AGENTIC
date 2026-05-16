@@ -108,6 +108,8 @@ async def lifespan(app: FastAPI):
     reranker_model = os.getenv("RERANKER_MODEL") or None
     rerank_top_n = int(os.getenv("RERANK_TOP_N", "30"))
     retriever = TrafficHybridRetriever(
+        qdrant_host=os.getenv("QDRANT_HOST", "localhost"),
+        qdrant_port=int(os.getenv("QDRANT_PORT", "6333")),
         enable_reranker=enable_reranker,
         reranker_model=reranker_model,
         rerank_top_n=rerank_top_n,

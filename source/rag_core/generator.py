@@ -277,53 +277,125 @@ class LegalAnswerGenerator:
 
     @staticmethod
     def _extract_cited_sources(answer: str, chunks: list[dict]) -> list[dict]:
-        """Return chunk metadata for every doc_id the answer cites.
+        """Return ONLY chunks that match an explicit (Điều, Khoản, Điểm — doc_id)
+        citation in the answer.
 
-        Recognises four citation formats the model tends to emit:
-          1. `(168/2024/NĐ-CP)` — parentheses per the prompted format.
-          2. `[168/2024/NĐ-CP]` — square brackets (LLM often substitutes).
-          3. Naked `168/2024/NĐ-CP` inside free text.
-          4. Natural-language name like `Luật Trật tự ATGT đường bộ 2024` —
-             matched against `ten_van_ban` of any chunk in the working set.
-             This catches Vietnamese laws (QH15) where the LLM rarely emits
-             the formal `36/2024/QH15` slug.
+        Strategy:
+          1. Parse every bracketed citation `[... Điều X, Khoản Y, Điểm Z — <doc>]`
+             (or `( ... )`) into a tuple (doc_id_or_name, dieu, khoan, diem).
+             Khoản/Điểm are optional — if missing, the citation matches any
+             chunk under that Điều.
+          2. For each chunk, keep it iff there is a parsed citation whose
+             (dieu, khoan, diem) is a non-empty subset of the chunk's metadata
+             AND whose document token matches the chunk's doc_id or ten_van_ban.
+          3. Fallback: if NO bracketed citations were parsed at all (older
+             answers, web fallback), keep nothing rather than dumping the whole
+             retrieval top-k.
         """
-        bracketed = re.findall(
-            r"[\(\[]\s*([^()\[\]]+?/[^()\[\]]+?)\s*[\)\]]", answer
-        )
-        cited_doc_ids = set(bracketed)
-        for m in re.finditer(r"\b(\d+/\d{4}/[A-ZĐ\-]+)\b", answer):
-            cited_doc_ids.add(m.group(1))
 
-        # Format (4): match by ten_van_ban substring (case-insensitive).
-        # We collect (name → doc_id) from the chunks themselves so the lookup
-        # stays bounded to the documents actually retrieved for this answer.
-        answer_lower = answer.lower()
+        def _norm(v):
+            if v is None:
+                return None
+            s = str(v).strip()
+            return s.lower() or None
+
+        # --- Step 1: parse citations -----------------------------------------
+        # Match either [...] or (...). Inside, extract Điều/Khoản/Điểm and a
+        # trailing document token after an em-dash / hyphen / "—".
+        cite_pattern = re.compile(
+            r"[\[\(]"                              # opening bracket
+            r"[^\[\]\(\)]*?"                       # anything except brackets
+            r"(?:Điều|Dieu)\s*([0-9]+)"            # Điều N
+            r"(?:[^\[\]\(\)]*?(?:Khoản|Khoan)\s*([0-9]+[a-zA-ZđĐ]?))?"
+            r"(?:[^\[\]\(\)]*?(?:Điểm|Diem)\s*([a-zA-ZđĐ0-9]+))?"
+            r"(?:[^\[\]\(\)]*?[—\-–][^\[\]\(\)]*?"
+            r"([^\[\]\(\)]+?))?"                   # tail (doc name / id)
+            r"[\]\)]",
+            re.IGNORECASE,
+        )
+
+        parsed = []  # list of (doc_token_lower, dieu, khoan, diem)
+        for m in cite_pattern.finditer(answer):
+            dieu = _norm(m.group(1))
+            khoan = _norm(m.group(2))
+            diem = _norm(m.group(3))
+            tail = (m.group(4) or "").strip().lower()
+            parsed.append((tail, dieu, khoan, diem))
+
+        if not parsed:
+            return []
+
+        # --- Step 2: build a doc-token resolver -------------------------------
+        # The tail may be a slug like "168/2024/NĐ-CP" or a natural-language
+        # name like "NĐ 168" / "Luật Trật tự ATGT đường bộ 2024". Build the
+        # set of valid (doc_id, ten_van_ban) pairs FROM the retrieved chunks
+        # so we don't accept references to documents the model invented.
+        known_docs = []  # list of (doc_id_lower, ten_van_ban_lower)
         for c in chunks:
             meta = c.get("metadata", {})
-            name = (meta.get("ten_van_ban") or "").strip()
-            did = meta.get("doc_id", "")
-            if not name or not did or did in cited_doc_ids:
-                continue
-            # Strip parenthetical suffix like "Luật ATGT 2024 (Số 36/2024/QH15)"
-            short_name = re.sub(r"\s*\([^)]*\)\s*$", "", name).strip().lower()
-            if short_name and len(short_name) >= 8 and short_name in answer_lower:
-                cited_doc_ids.add(did)
+            did = (meta.get("doc_id") or "").strip().lower()
+            name = (meta.get("ten_van_ban") or "").strip().lower()
+            if did or name:
+                known_docs.append((did, name))
 
+        def _tail_matches_chunk(tail: str, chunk_did: str, chunk_name: str) -> bool:
+            """Return True if the citation tail refers to this chunk's doc."""
+            if not tail:
+                # No tail parsed — accept any doc; Điều/Khoản/Điểm carry the
+                # specificity. (Rare; the prompt asks for `— {doc_id}`.)
+                return True
+            tail_l = tail.lower()
+            cdid = (chunk_did or "").lower()
+            cname = (chunk_name or "").lower()
+            if cdid and cdid in tail_l:
+                return True
+            if cdid and tail_l in cdid:
+                return True
+            # Number-slug match (e.g. "168/2024" inside both)
+            slug_m = re.search(r"(\d+/\d{4})", tail_l)
+            if slug_m and cdid and slug_m.group(1) in cdid:
+                return True
+            # Name match — require a reasonably long overlap to avoid spurious
+            # hits like the word "Luật" alone.
+            if cname:
+                short = re.sub(r"\s*\([^)]*\)\s*$", "", cname).strip()
+                if len(short) >= 8 and short in tail_l:
+                    return True
+            return False
+
+        # --- Step 3: filter chunks -------------------------------------------
         sources = []
         seen = set()
         for c in chunks:
             meta = c.get("metadata", {})
-            did = meta.get("doc_id", "")
-            key = (did, meta.get("dieu"), meta.get("khoan"), meta.get("diem"))
-            if did and did in cited_doc_ids and key not in seen:
+            cdid = meta.get("doc_id", "") or ""
+            cname = meta.get("ten_van_ban", "") or ""
+            c_dieu = _norm(meta.get("dieu"))
+            c_khoan = _norm(meta.get("khoan"))
+            c_diem = _norm(meta.get("diem"))
+
+            for tail, p_dieu, p_khoan, p_diem in parsed:
+                if p_dieu and c_dieu != p_dieu:
+                    continue
+                if p_khoan and c_khoan and c_khoan != p_khoan:
+                    continue
+                if p_diem and c_diem and c_diem != p_diem:
+                    continue
+                if not _tail_matches_chunk(tail, cdid, cname):
+                    continue
+
+                key = (cdid, c_dieu, c_khoan, c_diem)
+                if key in seen:
+                    break
                 seen.add(key)
                 sources.append({
-                    "doc_id": did,
-                    "ten_van_ban": meta.get("ten_van_ban", ""),
+                    "doc_id": cdid,
+                    "ten_van_ban": cname,
                     "dieu": meta.get("dieu"),
                     "khoan": meta.get("khoan"),
                     "diem": meta.get("diem"),
                     "chunk_id": meta.get("chunk_id", ""),
                 })
+                break
+
         return sources

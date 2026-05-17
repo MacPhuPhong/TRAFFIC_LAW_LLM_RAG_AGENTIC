@@ -1,6 +1,6 @@
 // src/lib/admin.ts — shared helpers to gate the /admin surface.
 import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { authOptions } from '@/lib/authOptions';
 
 export interface AdminCheck {
   ok: boolean;

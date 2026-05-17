@@ -5,7 +5,13 @@ import { useMemo, useState } from 'react';
 import { useChatStore, groupByDate } from '@/lib/store';
 import { Icon } from './Icon';
 
-export function Sidebar({ onCollapse }: { onCollapse?: () => void }) {
+export function Sidebar({
+  onCollapse,
+  onNavigate,
+}: {
+  onCollapse?: () => void;
+  onNavigate?: () => void;
+}) {
   const {
     conversations, activeId, setActive, newConversation, deleteConversation, togglePin,
   } = useChatStore();
@@ -21,7 +27,7 @@ export function Sidebar({ onCollapse }: { onCollapse?: () => void }) {
   const groups = groupByDate(filtered);
 
   return (
-    <aside className="w-[280px] shrink-0 bg-surface border-r border-border flex flex-col">
+    <aside className="w-[85vw] max-w-[300px] md:w-[280px] h-full shrink-0 bg-surface border-r border-border flex flex-col">
       {/* Brand */}
       <div className="px-[18px] pt-[18px] pb-3 flex items-center gap-3">
         <div
@@ -38,7 +44,10 @@ export function Sidebar({ onCollapse }: { onCollapse?: () => void }) {
 
       {/* New chat */}
       <div className="px-3.5 pb-2.5">
-        <button onClick={() => newConversation()} className="btn-primary w-full">
+        <button
+          onClick={() => { newConversation(); onNavigate?.(); }}
+          className="btn-primary w-full"
+        >
           <Icon name="plus" size={15} strokeWidth={2.2} />
           Cuộc hội thoại mới
         </button>
@@ -75,7 +84,7 @@ export function Sidebar({ onCollapse }: { onCollapse?: () => void }) {
               return (
                 <div
                   key={c.id}
-                  onClick={() => setActive(c.id)}
+                  onClick={() => { setActive(c.id); onNavigate?.(); }}
                   className={`group relative flex items-center gap-2 px-2 py-1.5 rounded-md mb-px cursor-pointer transition ${
                     active ? 'bg-accent-soft text-primary font-medium' : 'text-text-muted hover:bg-surface-muted'
                   }`}
@@ -83,7 +92,7 @@ export function Sidebar({ onCollapse }: { onCollapse?: () => void }) {
                   <span className="text-[12.5px] truncate flex-1">{c.title}</span>
                   <button
                     onClick={(e) => { e.stopPropagation(); setMenuId(open ? null : c.id); }}
-                    className="icon-btn !w-6 !h-6 opacity-0 group-hover:opacity-100"
+                    className="icon-btn !w-6 !h-6 opacity-100 md:opacity-0 md:group-hover:opacity-100"
                   >
                     <Icon name="more" size={14} />
                   </button>

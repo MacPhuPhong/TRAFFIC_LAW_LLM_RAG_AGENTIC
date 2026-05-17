@@ -80,6 +80,8 @@ class TrafficHybridRetriever:
         self,
         qdrant_host: str = "localhost",
         qdrant_port: int = 6333,
+        qdrant_url: str | None = None,
+        qdrant_api_key: str | None = None,
         collection_name: str = DEFAULT_COLLECTION,
         embedding_model: str = DEFAULT_EMBEDDING_MODEL,
         jsonl_path: str | Path = DEFAULT_JSONL,
@@ -96,8 +98,12 @@ class TrafficHybridRetriever:
         self.enable_reranker = enable_reranker
         self.rerank_top_n = rerank_top_n
 
-        logger.info(f"Connecting Qdrant: {qdrant_host}:{qdrant_port}")
-        self.client = QdrantClient(host=qdrant_host, port=qdrant_port)
+        if qdrant_url:
+            logger.info(f"Connecting Qdrant Cloud: {qdrant_url}")
+            self.client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key)
+        else:
+            logger.info(f"Connecting Qdrant: {qdrant_host}:{qdrant_port}")
+            self.client = QdrantClient(host=qdrant_host, port=qdrant_port, api_key=qdrant_api_key)
         self.client.get_collections()  # fail fast if unreachable
 
         logger.info(f"Loading embedding model: {embedding_model}")

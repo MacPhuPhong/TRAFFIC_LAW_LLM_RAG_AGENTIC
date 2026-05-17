@@ -30,9 +30,12 @@ from rag_core.retriever import TrafficHybridRetriever  # noqa: E402
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-QDRANT_HOST = "localhost"
-QDRANT_PORT = 6333
-COLLECTION_NAME = "Traffic_Law_Hybrid"
+import os
+QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
+QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
+QDRANT_URL = os.getenv("QDRANT_URL") or None
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY") or None
+COLLECTION_NAME = os.getenv("QDRANT_COLLECTION", "Traffic_Law_Hybrid")
 EMBEDDING_MODEL = "intfloat/multilingual-e5-base"
 VECTOR_SIZE = 768
 BATCH_EMBED = 64       # Encode 64 texts at a time
@@ -270,16 +273,20 @@ def main():
     logger.info("QDRANT INDEXING PIPELINE v1.0")
     logger.info("=" * 60)
 
-    # 1. Connect to Qdrant
-    logger.info(f"Kết nối Qdrant: {QDRANT_HOST}:{QDRANT_PORT}")
-    client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+    # 1. Connect to Qdrant (local or cloud)
+    if QDRANT_URL:
+        logger.info(f"Kết nối Qdrant Cloud: {QDRANT_URL}")
+        client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+    else:
+        logger.info(f"Kết nối Qdrant: {QDRANT_HOST}:{QDRANT_PORT}")
+        client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT, api_key=QDRANT_API_KEY)
 
     try:
         client.get_collections()
         logger.info("Kết nối Qdrant thành công!\n")
     except Exception as e:
         logger.error(f"Không thể kết nối Qdrant: {e}")
-        logger.error("Hãy chạy: docker compose up -d qdrant")
+        logger.error("Local: docker compose up -d qdrant   |   Cloud: kiểm tra QDRANT_URL/QDRANT_API_KEY")
         sys.exit(1)
 
     # 2. Load embedding model
@@ -299,6 +306,8 @@ def main():
     retriever = TrafficHybridRetriever(
         qdrant_host=QDRANT_HOST,
         qdrant_port=QDRANT_PORT,
+        qdrant_url=QDRANT_URL,
+        qdrant_api_key=QDRANT_API_KEY,
         collection_name=COLLECTION_NAME,
         embedding_model=EMBEDDING_MODEL,
         jsonl_path=JSONL_PATH,

@@ -110,6 +110,8 @@ async def lifespan(app: FastAPI):
     retriever = TrafficHybridRetriever(
         qdrant_host=os.getenv("QDRANT_HOST", "localhost"),
         qdrant_port=int(os.getenv("QDRANT_PORT", "6333")),
+        qdrant_url=os.getenv("QDRANT_URL") or None,
+        qdrant_api_key=os.getenv("QDRANT_API_KEY") or None,
         enable_reranker=enable_reranker,
         reranker_model=reranker_model,
         rerank_top_n=rerank_top_n,
@@ -134,18 +136,29 @@ async def lifespan(app: FastAPI):
 
     tavily = TavilySearchTool()
 
-    ckpt_db = Path(
-        os.getenv("CHECKPOINT_DB", str(PROJECT_ROOT / "checkpoints" / "graph.db"))
-    )
-    ckpt_db.parent.mkdir(parents=True, exist_ok=True)
-
-    import aiosqlite
-    from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-
-    conn = await aiosqlite.connect(str(ckpt_db))
-    checkpointer = AsyncSqliteSaver(conn)
-    await checkpointer.setup()
-    logger.info("AsyncSqliteSaver at %s", ckpt_db)
+    # Checkpoint backend: Postgres (Supabase) if CHECKPOINT_DB_URL starts with
+    # postgres:// or postgresql://; otherwise local SQLite file.
+    ckpt_url = os.getenv("CHECKPOINT_DB_URL", "")
+    if ckpt_url.startswith(("postgres://", "postgresql://")):
+        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+        # langgraph expects "postgresql://" not "postgres://"
+        pg_url = ckpt_url.replace("postgres://", "postgresql://", 1)
+        cm = AsyncPostgresSaver.from_conn_string(pg_url)
+        checkpointer = await cm.__aenter__()
+        app.state._ckpt_cm = cm  # keep alive for shutdown
+        await checkpointer.setup()
+        logger.info("AsyncPostgresSaver connected (Supabase / Postgres)")
+    else:
+        ckpt_db = Path(
+            os.getenv("CHECKPOINT_DB", str(PROJECT_ROOT / "checkpoints" / "graph.db"))
+        )
+        ckpt_db.parent.mkdir(parents=True, exist_ok=True)
+        import aiosqlite
+        from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+        conn = await aiosqlite.connect(str(ckpt_db))
+        checkpointer = AsyncSqliteSaver(conn)
+        await checkpointer.setup()
+        logger.info("AsyncSqliteSaver at %s", ckpt_db)
 
     logger.info("Building graph...")
     graph = build_graph(
@@ -183,6 +196,21 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# CORS — when frontend is hosted on a different origin (e.g. Vercel) and calls
+# the backend directly. Set CORS_ALLOWED_ORIGINS="https://x.vercel.app,https://y"
+# in env. Use "*" to allow all (dev only).
+_cors = os.getenv("CORS_ALLOWED_ORIGINS", "").strip()
+if _cors:
+    from fastapi.middleware.cors import CORSMiddleware
+    origins = ["*"] if _cors == "*" else [o.strip() for o in _cors.split(",") if o.strip()]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
 # --- endpoints --------------------------------------------------------------

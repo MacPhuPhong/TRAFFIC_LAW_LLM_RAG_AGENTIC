@@ -1,22 +1,22 @@
-# Python
+# Python — scoped to repo root only so we don't accidentally match Next.js src/lib/
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-env/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
+/env/
+/build/
+/develop-eggs/
+/dist/
+/downloads/
+/eggs/
+/.eggs/
+/lib/
+/lib64/
+/parts/
+/sdist/
+/var/
+/wheels/
 *.egg-info/
 .installed.cfg
 *.egg
@@ -33,11 +33,16 @@ qdrant_storage/
 *.swp
 *.swo
 
-# Project specific
-Data/
+# Project specific — ignore Data contents but allow specific files
+Data/*
 !Data/README.md
+!Data/all_chunks.jsonl
 **/__pycache__/
 *.log
+
+# Frontend env files (auto-generated SECRETs, NEXTAUTH_SECRET, etc.)
+app/nextjs-app/.env.local
+app/nextjs-app/.env*.local
 
 # LangGraph checkpoints
 checkpoints/

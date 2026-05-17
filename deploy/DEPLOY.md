@@ -13,21 +13,22 @@ Mục tiêu: chạy Traffic RAG (Qdrant + FastAPI + Next.js + Nginx) trên 1 VM 
 
 ### Thông số instance
 
-| Field | Value |
-|---|---|
-| Name | `traffic-rag` |
-| Image | **Canonical Ubuntu 22.04** (ARM) |
-| Shape | **VM.Standard.A1.Flex** (Ampere) |
-| OCPU | **4** |
-| Memory | **24 GB** |
-| Boot volume | **50 GB** (mặc định) |
-| SSH | Generate new SSH key → **lưu private key `.pem`** |
+| Field       | Value                                            |
+| ----------- | ------------------------------------------------ |
+| Name        | `traffic-rag`                                    |
+| Image       | **Canonical Ubuntu 22.04** (ARM)                 |
+| Shape       | **VM.Standard.A1.Flex** (Ampere)                 |
+| OCPU        | **4**                                            |
+| Memory      | **24 GB**                                        |
+| Boot volume | **50 GB** (mặc định)                             |
+| SSH         | Generate new SSH key →**lưu private key `.pem`** |
 
 > Nếu báo "Out of capacity" → đổi sang region khác (Tokyo, Osaka, Mumbai) hoặc thử lại sau vài giờ. Đây là phần khó nhất của Oracle Free Tier.
 
 ### Mở port 80 ở Oracle firewall
 
 Sau khi instance chạy:
+
 1. Click vào instance → **Subnet** → **Default Security List**.
 2. **Add Ingress Rule**:
    - Source CIDR: `0.0.0.0/0`
@@ -83,6 +84,7 @@ bash setup-oracle.sh
 ```
 
 Script sẽ:
+
 - Cài Docker + Compose v2
 - Mở iptables port 80 (Oracle Ubuntu chặn mặc định ngoài SSH)
 - Tạo swap 2GB
@@ -92,6 +94,7 @@ Script sẽ:
 **Lần đầu build ~8-12 phút** (download base image ARM + cài Python deps + pre-download embedding model 1.1GB).
 
 Sau khi script chạy xong, log ra:
+
 ```
 ==> Deploy complete.
     Frontend:  http://<PUBLIC_IP>
@@ -108,10 +111,11 @@ docker compose -f docker-compose.prod.yml logs -f backend  # Ctrl+C để thoát
 ```
 
 Trên browser:
+
 - `http://<PUBLIC_IP>` — UI chat
 - `http://<PUBLIC_IP>/admin` — HITL approval (đăng nhập Google bắt buộc, hoặc bỏ auth — xem §6)
 
-Hỏi thử: *"Vượt đèn đỏ ô tô bị phạt bao nhiêu?"*
+Hỏi thử: _"Vượt đèn đỏ ô tô bị phạt bao nhiêu?"_
 
 ---
 
@@ -179,14 +183,14 @@ Khi đã mua domain (`.id.vn`, `.xyz`...):
 
 ## 9. Troubleshooting
 
-| Triệu chứng | Xử lý |
-|---|---|
-| `http://<IP>` timeout | Check Oracle Security List ingress port 80 + iptables (script đã mở, nhưng verify: `sudo iptables -L INPUT -n | grep 80`) |
-| Backend OOM | Đổi container memory limit hoặc tăng swap. Free Tier ARM 24GB không gặp. |
-| Qdrant collection trống | `docker compose exec backend python -m source.indexing.indexer --recreate` |
-| Build chậm/lỗi | `docker compose build --no-cache backend` |
-| Gemini quota hết | Đổi `API_KEY` trong `.env` (xem comment đa key trong file). Restart backend. |
-| Embedding download chậm | First build pull ~1.1GB từ HuggingFace, kiên nhẫn. Cache lại trong volume `hf_cache`. |
+| Triệu chứng             | Xử lý                                                                                                         |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `http://<IP>` timeout   | Check Oracle Security List ingress port 80 + iptables (script đã mở, nhưng verify: `sudo iptables -L INPUT -n |
+| Backend OOM             | Đổi container memory limit hoặc tăng swap. Free Tier ARM 24GB không gặp.                                      |
+| Qdrant collection trống | `docker compose exec backend python -m source.indexing.indexer --recreate`                                    |
+| Build chậm/lỗi          | `docker compose build --no-cache backend`                                                                     |
+| Gemini quota hết        | Đổi `API_KEY` trong `.env` (xem comment đa key trong file). Restart backend.                                  |
+| Embedding download chậm | First build pull ~1.1GB từ HuggingFace, kiên nhẫn. Cache lại trong volume `hf_cache`.                         |
 
 ---
 

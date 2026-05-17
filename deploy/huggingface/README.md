@@ -6,8 +6,8 @@ colorTo: indigo
 sdk: docker
 app_port: 7860
 pinned: false
-license: mit
-short_description: Vietnamese traffic-law agentic RAG backend (FastAPI + LangGraph)
+license: other
+short_description: Traffic-law RAG backend (FastAPI + LangGraph)
 ---
 
 # Traffic RAG Backend — Hugging Face Space
@@ -40,18 +40,18 @@ context/
 
 ## Required Secrets (Space Settings → Secrets)
 
-| Key | Mô tả |
-|---|---|
-| `API_KEY` | Google Gemini API key |
-| `TAVILY_API_KEY` | Tavily search key |
-| `QDRANT_URL` | https://xxx.qdrant.io (Qdrant Cloud) |
-| `QDRANT_API_KEY` | Qdrant Cloud API key |
-| `CHECKPOINT_DB_URL` | postgresql://...supabase.co:5432/postgres |
-| `CORS_ALLOWED_ORIGINS` | https://your-app.vercel.app |
-| `LANGCHAIN_API_KEY` | (optional) LangSmith tracing |
-| `LANGCHAIN_TRACING_V2` | (optional) `true` |
-| `LANGCHAIN_PROJECT` | (optional) `Traffic-RAG-Production` |
-| `GENERATOR_MODEL` | (optional) `gemini-3.1-flash-lite-preview` |
+| Key                    | Mô tả                                      |
+| ---------------------- | ------------------------------------------ |
+| `API_KEY`              | Google Gemini API key                      |
+| `TAVILY_API_KEY`       | Tavily search key                          |
+| `QDRANT_URL`           | https://xxx.qdrant.io (Qdrant Cloud)       |
+| `QDRANT_API_KEY`       | Qdrant Cloud API key                       |
+| `CHECKPOINT_DB_URL`    | postgresql://...supabase.co:5432/postgres  |
+| `CORS_ALLOWED_ORIGINS` | https://your-app.vercel.app                |
+| `LANGCHAIN_API_KEY`    | (optional) LangSmith tracing               |
+| `LANGCHAIN_TRACING_V2` | (optional) `true`                          |
+| `LANGCHAIN_PROJECT`    | (optional) `Traffic-RAG-Production`        |
+| `GENERATOR_MODEL`      | (optional) `gemini-3.1-flash-lite-preview` |
 
 ## Endpoints
 

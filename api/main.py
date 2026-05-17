@@ -107,11 +107,15 @@ async def lifespan(app: FastAPI):
     enable_reranker = os.getenv("ENABLE_RERANKER", "false").lower() in ("1", "true", "yes")
     reranker_model = os.getenv("RERANKER_MODEL") or None
     rerank_top_n = int(os.getenv("RERANK_TOP_N", "30"))
+    # Strip whitespace — HF Spaces UI sometimes appends trailing newline when
+    # pasting secrets, which causes httpx "Illegal header value" errors.
+    _qdrant_url = (os.getenv("QDRANT_URL") or "").strip() or None
+    _qdrant_api_key = (os.getenv("QDRANT_API_KEY") or "").strip() or None
     retriever = TrafficHybridRetriever(
-        qdrant_host=os.getenv("QDRANT_HOST", "localhost"),
+        qdrant_host=os.getenv("QDRANT_HOST", "localhost").strip(),
         qdrant_port=int(os.getenv("QDRANT_PORT", "6333")),
-        qdrant_url=os.getenv("QDRANT_URL") or None,
-        qdrant_api_key=os.getenv("QDRANT_API_KEY") or None,
+        qdrant_url=_qdrant_url,
+        qdrant_api_key=_qdrant_api_key,
         enable_reranker=enable_reranker,
         reranker_model=reranker_model,
         rerank_top_n=rerank_top_n,
@@ -158,6 +162,7 @@ async def lifespan(app: FastAPI):
         conn = await aiosqlite.connect(str(ckpt_db))
         checkpointer = AsyncSqliteSaver(conn)
         await checkpointer.setup()
+        app.state._ckpt_conn = conn
         logger.info("AsyncSqliteSaver at %s", ckpt_db)
 
     logger.info("Building graph...")
@@ -171,7 +176,6 @@ async def lifespan(app: FastAPI):
     app.state.llm = llm
     app.state.tavily = tavily
     app.state.graph = graph
-    app.state._ckpt_conn = conn
     # In-memory registry of threads paused at web_finalize awaiting admin
     # review. Populated by /chat, drained by /resume. Each entry holds the
     # info an admin needs to make a decision.
@@ -181,10 +185,18 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("Shutting down API.")
-    try:
-        await conn.close()
-    except Exception:
-        pass
+    conn = getattr(app.state, "_ckpt_conn", None)
+    if conn is not None:
+        try:
+            await conn.close()
+        except Exception:
+            pass
+    cm = getattr(app.state, "_ckpt_cm", None)
+    if cm is not None:
+        try:
+            await cm.__aexit__(None, None, None)
+        except Exception:
+            pass
 
 
 app = FastAPI(

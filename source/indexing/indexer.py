@@ -274,12 +274,14 @@ def main():
     logger.info("=" * 60)
 
     # 1. Connect to Qdrant (local or cloud)
+    # Long timeout for cloud uploads from high-latency networks.
+    qdrant_timeout = int(os.getenv("QDRANT_TIMEOUT", "120"))
     if QDRANT_URL:
-        logger.info(f"Kết nối Qdrant Cloud: {QDRANT_URL}")
-        client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+        logger.info(f"Kết nối Qdrant Cloud: {QDRANT_URL}  (timeout={qdrant_timeout}s)")
+        client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY, timeout=qdrant_timeout)
     else:
         logger.info(f"Kết nối Qdrant: {QDRANT_HOST}:{QDRANT_PORT}")
-        client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT, api_key=QDRANT_API_KEY)
+        client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT, api_key=QDRANT_API_KEY, timeout=qdrant_timeout)
 
     try:
         client.get_collections()

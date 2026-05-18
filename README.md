@@ -2,8 +2,10 @@
 
 Hệ thống **Agentic RAG** trả lời câu hỏi về pháp luật giao thông đường bộ Việt Nam, có **Human-in-the-Loop** (HITL) phê duyệt câu trả lời từ web khi corpus nội bộ không đủ.
 
+- **🌐 Production**: https://traffic-rag.vercel.app (free, deployed 2026-05-17)
 - **Corpus:** 26 văn bản (Luật + Nghị định + Thông tư hiệu lực 2025–2026) → **2 818 chunk** trong Qdrant.
-- **Stack:** FastAPI · LangGraph · Qdrant (hybrid dense + BM25) · Gemini 2.5 Flash · Tavily · Next.js 14.
+- **Stack:** FastAPI · LangGraph · Qdrant (hybrid dense + BM25) · Gemini 3.1 Flash Lite · Tavily · Next.js 14.
+- **Deploy production**: Vercel (FE) + Hugging Face Spaces (BE) + Qdrant Cloud + Supabase Postgres — xem [deploy/DEPLOY-PRODUCTION.md](deploy/DEPLOY-PRODUCTION.md).
 
 ---
 
@@ -210,6 +212,9 @@ traffic_rag/
 - Báo cáo đầy đủ: [doc/bao_cao_he_thong.md](doc/bao_cao_he_thong.md)
 - Hướng dẫn chạy chi tiết từng bước: [doc/implementation_plan.md](doc/implementation_plan.md)
 - Kịch bản video demo: [doc/video_script.md](doc/video_script.md)
+- **Deploy production** (free, hybrid cloud): [deploy/DEPLOY-PRODUCTION.md](deploy/DEPLOY-PRODUCTION.md)
+- Deploy alternative (1 VPS Oracle ARM): [deploy/DEPLOY.md](deploy/DEPLOY.md)
+- Sơ đồ kiến trúc: [doc/so_do_he_thong.md §9](doc/so_do_he_thong.md#9-deployment)
 
 ---
 

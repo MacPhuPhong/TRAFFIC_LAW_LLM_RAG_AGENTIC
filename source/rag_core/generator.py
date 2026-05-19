@@ -272,6 +272,7 @@ class LegalAnswerGenerator:
         *,
         intent: str = "penalty",
         multi_frame: bool = False,
+        vehicle_type: str = "any",
     ) -> dict:
         """
         Produce a grounded answer.
@@ -285,6 +286,11 @@ class LegalAnswerGenerator:
         `multi_frame`: True when retrieval pulled ≥2 distinct (Điều, Khoản).
             When True, the model is INSTRUCTED to enumerate "### Trường hợp
             1 / 2 / ..." headings instead of writing a single mạch lạc answer.
+
+        `vehicle_type` (from analyzer): o_to / mo_to / chuyen_dung / xe_dap /
+            any. When NOT 'any', generator is told to CITE ONLY the matching
+            Điều (6/7/8/9 of NĐ 168/2024) and forbid extrapolating from one
+            vehicle's Điều to another's via "áp dụng tương tự".
 
         Returns {"answer": str, "sources": [...], "refused": bool, "model": str}.
         """
@@ -312,10 +318,31 @@ class LegalAnswerGenerator:
                 "'### Trường hợp 1 / 2 / ...'. KHÔNG chọn ngầm 1 Khoản."
             )
 
+        # Vehicle binding hint — restricts citations to one Điều (6/7/8/9) of
+        # NĐ 168 when the user's vehicle type is unambiguous. Prevents the
+        # "cite Điều 6 (ô tô) for motorcycle user" failure observed earlier.
+        #
+        # v5-mitigation: APPLY ONLY for intent in {penalty, mixed}. For
+        # procedure/definition/list intents, "vehicle type" may match the
+        # subject (xe máy điện) but the relevant articles live OUTSIDE NĐ 168
+        # (Thông tư 79 for đăng ký, Thông tư 35 for kiểm định, …). Binding to
+        # NĐ 168 Điều 7 would block those chunks. See RQ-020 regression.
+        vehicle_hint = ""
+        if intent in ("penalty", "mixed") and vehicle_type != "any":
+            vehicle_hints = {
+                "o_to": "USER VEHICLE: ô tô (xe ô tô, xe tải, xe khách, xe bán tải) → khi trích MỨC PHẠT từ NĐ 168/2024 hãy ƯU TIÊN Điều 6. Có thể dùng Điều khác (Đ23 chở quá tải, Đ24 kích thước hàng hoá, ...) nếu hành vi đó được quy định ở Điều khác. KHÔNG dùng cụm 'áp dụng tương tự cho xe khác'.",
+                "mo_to": "USER VEHICLE: xe mô tô / gắn máy / xe máy điện → khi trích MỨC PHẠT từ NĐ 168/2024 hãy ƯU TIÊN Điều 7. Có thể dùng Điều 13 (gương, đèn xi-nhan) nếu hành vi nằm ở Điều khác. KHÔNG dùng cụm 'áp dụng tương tự cho xe khác'.",
+                "chuyen_dung": "USER VEHICLE: xe máy chuyên dùng → khi trích MỨC PHẠT từ NĐ 168/2024 hãy ƯU TIÊN Điều 8.",
+                "xe_dap": "USER VEHICLE: xe đạp / xe thô sơ → khi trích MỨC PHẠT từ NĐ 168/2024 hãy ƯU TIÊN Điều 9.",
+            }
+            vehicle_hint = vehicle_hints.get(vehicle_type, "")
+            if vehicle_hint:
+                vehicle_hint = f"\n\n{vehicle_hint}"
+
         user_content = (
             f"NGỮ CẢNH:\n{context}\n\n"
             f"CÂU HỎI: {query}\n\n"
-            f"{intent_hint}{multi_frame_hint}\n\n"
+            f"{intent_hint}{multi_frame_hint}{vehicle_hint}\n\n"
             f"Hãy trả lời dựa CHỈ trên ngữ cảnh trên, tuân thủ các quy tắc ở hệ thống."
         )
 

@@ -15,7 +15,7 @@ from typing import Callable
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
-from .state import AgentState, Category, Intent
+from .state import AgentState, Category, Intent, VehicleType
 
 
 logger = logging.getLogger(__name__)
@@ -69,6 +69,17 @@ class AnalyzerOutput(BaseModel):
             "For non-legal_rag categories, use the closest fit or 'definition'."
         ),
     )
+    vehicle_type: VehicleType = Field(
+        default="any",
+        description=(
+            "Phương tiện chính trong câu hỏi: 'o_to' (ô tô con/tải/khách → Điều 6 "
+            "NĐ 168), 'mo_to' (xe mô tô/gắn máy/xe máy điện → Điều 7), "
+            "'chuyen_dung' (xe máy chuyên dùng, máy kéo → Điều 8), 'xe_dap' "
+            "(xe đạp/xe thô sơ → Điều 9). Mặc định 'any' khi câu hỏi không nêu "
+            "loại xe rõ ràng. KHÔNG suy đoán; chỉ dùng từ ngữ trong câu hỏi + "
+            "lịch sử hội thoại."
+        ),
+    )
     standalone_query: str = Field(description="Self-contained rewrite of the query using history.")
     expanded_queries: list[str] = Field(
         default_factory=list,
@@ -82,7 +93,7 @@ class AnalyzerOutput(BaseModel):
     )
 
 ANALYZER_SYSTEM_PROMPT = """Bạn là chuyên gia phân tích truy vấn Luật Giao thông Việt Nam.
-Nhiệm vụ: Đọc lịch sử hội thoại + câu hỏi mới, thực hiện 4 việc trong 1 lần gọi:
+Nhiệm vụ: Đọc lịch sử hội thoại + câu hỏi mới, thực hiện 5 việc trong 1 lần gọi:
 
 1. PHÂN LOẠI (Category):
    - 'legal_rag': Hỏi về luật, mức phạt, đăng kiểm, đăng ký xe, quy định giao thông VN,
@@ -133,10 +144,23 @@ Nhiệm vụ: Đọc lịch sử hội thoại + câu hỏi mới, thực hiện
                    mức phạt (phạt, bao nhiêu).
    Nếu là chit_chat / web / out_of_scope → chọn intent gần nhất (thường 'definition').
 
-3. CHUẨN HOÁ (standalone_query): Viết lại thành câu độc lập, giải tham chiếu từ
+3. LOẠI PHƯƠNG TIỆN (vehicle_type) — chỉ dùng từ ngữ trong câu hỏi + history:
+   - 'o_to':         câu hỏi có "ô tô", "xe ô tô", "xe con", "xe tải", "xe khách",
+                     "xe bán tải", "ô tô con" → Điều 6 NĐ 168.
+   - 'mo_to':        câu hỏi có "xe máy", "mô tô", "xe gắn máy", "xe máy điện",
+                     "moto", "xe 2 bánh" → Điều 7 NĐ 168.
+   - 'chuyen_dung':  câu hỏi có "máy chuyên dùng", "xe ba bánh chuyên dùng",
+                     "máy kéo" → Điều 8 NĐ 168.
+   - 'xe_dap':       câu hỏi có "xe đạp", "xe thô sơ" → Điều 9 NĐ 168.
+   - 'any':          câu hỏi KHÔNG nêu rõ loại xe (vd "vượt đèn đỏ bị phạt
+                     bao nhiêu") → mặc định, generator sẽ liệt kê đa-loại-xe.
+   ⚠️ TUYỆT ĐỐI KHÔNG SUY ĐOÁN. Câu "tôi vi phạm" không nêu xe → 'any'.
+   Nếu lịch sử hội thoại có nhắc loại xe → có thể carry over.
+
+4. CHUẨN HOÁ (standalone_query): Viết lại thành câu độc lập, giải tham chiếu từ
    lịch sử nếu có ("xe đó" → "xe ô tô con", "vậy thì sao" → câu đầy đủ trước đó).
 
-4. MỞ RỘNG (expanded_queries) — LIST 1-5 PHẦN TỬ, MỖI FRAME 1 PHẦN TỬ:
+5. MỞ RỘNG (expanded_queries) — LIST 1-5 PHẦN TỬ, MỖI FRAME 1 PHẦN TỬ:
 
    Retriever chạy hybrid search RIÊNG cho từng phần tử rồi RRF-fuse. Vì vậy:
    - MỖI phần tử = 1 frame pháp lý độc lập, KEYWORD TÁCH RỜI.
@@ -154,9 +178,9 @@ Nhiệm vụ: Đọc lịch sử hội thoại + câu hỏi mới, thực hiện
 
 FEW-SHOT:
 
-Ví dụ 1 — penalty đơn-nghĩa:
+Ví dụ 1 — penalty đơn-nghĩa, không nêu loại xe:
   Q: "đi ngược chiều thì bị phạt bao nhiêu?"
-  → category: legal_rag · intent: penalty
+  → category: legal_rag · intent: penalty · vehicle_type: any
   → standalone_query: "Đi ngược chiều bị phạt bao nhiêu tiền?"
   → expanded_queries: [
       "mức phạt đi ngược chiều xe ô tô xe máy đường một chiều
@@ -165,7 +189,7 @@ Ví dụ 1 — penalty đơn-nghĩa:
 
 Ví dụ 2 — fault (tai nạn 2 hành vi, hỏi LỖI):
   Q: "tôi chạy ngược chiều va chạm với người chạy quá tốc độ thì lỗi do ai"
-  → category: legal_rag · intent: fault
+  → category: legal_rag · intent: fault · vehicle_type: any
   → standalone_query: "Va chạm giữa người ngược chiều và người quá tốc độ, lỗi ai?"
   → expanded_queries: [
       "mức phạt đi ngược chiều Điều 6 Điều 7 Nghị định 168/2024",
@@ -175,7 +199,7 @@ Ví dụ 2 — fault (tai nạn 2 hành vi, hỏi LỖI):
 
 Ví dụ 3 — penalty đa-nghĩa (câu ngắn, 2 frame, tách keyword):
   Q: "vượt tín hiệu đường sắt"
-  → category: legal_rag · intent: penalty
+  → category: legal_rag · intent: penalty · vehicle_type: any
   → standalone_query: "Vượt tín hiệu tại đường sắt bị phạt như thế nào?"
   → expanded_queries: [
       "mức phạt vượt đèn đỏ không chấp hành hiệu lệnh đèn tín hiệu giao thông
@@ -188,11 +212,14 @@ Ví dụ 3 — penalty đa-nghĩa (câu ngắn, 2 frame, tách keyword):
 
 Ví dụ 4 — out-of-scope:
   Q: "công thức nấu phở bò"  → category: out_of_scope · intent: definition
+                              · vehicle_type: any
   → standalone_query / expanded_queries: [câu gốc]
 
-Ví dụ 5 — MIXED (tai nạn + hỏi MỨC PHẠT) — pattern thực tế hay gặp:
+Ví dụ 5 — MIXED (tai nạn + hỏi MỨC PHẠT) — không nêu xe:
   Q: "tránh xe tải tông phải trẻ em mức phạt bao nhiêu"
-  → category: legal_rag · intent: mixed
+  → category: legal_rag · intent: mixed · vehicle_type: any
+     (user không nêu rõ MÌNH đi xe gì; chỉ nói "xe tải" là phương tiện khác.
+      Generator sẽ liệt kê đa-loại-xe cho người gây va chạm.)
   → standalone_query: "Khi tránh xe tải dẫn đến va chạm với trẻ em đi bộ qua
      đường, người lái bị phạt bao nhiêu và xử lý thế nào?"
   → expanded_queries: [
@@ -206,9 +233,10 @@ Ví dụ 5 — MIXED (tai nạn + hỏi MỨC PHẠT) — pattern thực tế ha
   Lưu ý: mixed = penalty + fault → 3 phần tử (penalty + quy tắc + procedure).
   KHÔNG được bỏ phần penalty dù câu hỏi có cụm "tai nạn".
 
-Ví dụ 6 — COMPOUND (2 hành vi cùng lúc + hỏi MỨC PHẠT):
+Ví dụ 6 — COMPOUND (2 hành vi cùng lúc, có nêu xe rõ):
   Q: "băng qua đường ray xe lửa khi có tín hiệu đèn đỏ và chở 3 người trên xe máy"
-  → category: legal_rag · intent: penalty
+  → category: legal_rag · intent: penalty · vehicle_type: mo_to
+     ("xe máy" trong câu → Điều 7 NĐ 168)
   → standalone_query: "Trên xe máy, vừa vượt tín hiệu đèn tại đường sắt vừa chở
      3 người thì bị phạt bao nhiêu?"
   → expanded_queries: [
@@ -286,6 +314,7 @@ def make_analyzer_node(llm) -> Callable[[AgentState], dict]:
                 return {
                     "category": "legal_rag",
                     "intent": "penalty",
+                    "vehicle_type": "any",
                     "query": raw,
                     "expanded_query": raw,
                     "expanded_queries": [raw],
@@ -300,6 +329,7 @@ def make_analyzer_node(llm) -> Callable[[AgentState], dict]:
             return {
                 "category": getattr(result, "category", "legal_rag"),
                 "intent": getattr(result, "intent", "penalty"),
+                "vehicle_type": getattr(result, "vehicle_type", "any"),
                 "query": getattr(result, "standalone_query", raw),
                 # Joined form: kept for API back-compat + `_is_broad_query` regex pass.
                 "expanded_query": " | ".join(queries),
@@ -312,6 +342,7 @@ def make_analyzer_node(llm) -> Callable[[AgentState], dict]:
             return {
                 "category": "legal_rag",
                 "intent": "penalty",
+                "vehicle_type": "any",
                 "query": raw,
                 "expanded_query": raw,
                 "expanded_queries": [raw],
@@ -516,6 +547,78 @@ def _judge_retrieval_confidence(
     return ok, reasons, score
 
 
+# L2 parent enrichment thresholds — mitigate attention hijacking:
+#   - Skip pull if L2 chunk is > MAX_L2_CHARS (likely lists 10+ Điểm).
+#   - Skip pull unless ≥ MIN_L3_PER_KHOAN L3 children were retrieved (signal
+#     that the Khoản is genuinely relevant, not just one stray L3 hit).
+MAX_L2_CHARS_FOR_PARENT_PULL = 1500
+MIN_L3_PER_KHOAN_FOR_PARENT_PULL = 1
+
+
+def _attach_parent_l2(retriever, chunks: list, max_l2_chars: int = MAX_L2_CHARS_FOR_PARENT_PULL):
+    """Pull L2 Khoản parent chunks for L3 Điểm chunks already in top-K.
+
+    L3 chunks describe specific hành vi but the money amount typically lives
+    in the L2 parent (e.g. "Phạt tiền từ 400-600K đối với người điều khiển xe...
+    a) ... g) Chở 02 người ..."). Without the parent, the generator can't cite
+    the fine — see Ảnh 2 under-listing bug.
+
+    Mitigation against attention hijack:
+      - Skip L2 chunks longer than `max_l2_chars` — those list 10+ Điểm and
+        risk distracting the generator into summarising the entire Khoản.
+      - Only pull L2 if ≥ MIN_L3_PER_KHOAN_FOR_PARENT_PULL L3 children of that
+        Khoản are already in the top-K (signal of genuine relevance).
+    """
+    # Count L3 chunks per (doc_id, dieu, khoan)
+    l3_count: dict = {}
+    seen_ids = set()
+    for c in chunks:
+        seen_ids.add(c.id)
+        meta = getattr(c, "metadata", {}) or {}
+        if meta.get("level") != 3:
+            continue
+        key = (meta.get("doc_id"), meta.get("dieu"), meta.get("khoan"))
+        if all(key):
+            l3_count[key] = l3_count.get(key, 0) + 1
+
+    pulled = 0
+    extras = []
+    for key, count in l3_count.items():
+        if count < MIN_L3_PER_KHOAN_FOR_PARENT_PULL:
+            continue
+        doc_id, dieu, khoan = key
+        try:
+            parents = retriever.get_chunks_by_location(
+                doc_id=doc_id, dieu=int(dieu), khoan=khoan,
+            )
+        except Exception as exc:
+            logger.warning("parent-pull failed for %s: %s", key, exc)
+            continue
+        for p in parents:
+            if p.id in seen_ids:
+                continue
+            p_meta = getattr(p, "metadata", {}) or {}
+            if p_meta.get("level") != 2:
+                continue
+            content = getattr(p, "content", "") or ""
+            if len(content) > max_l2_chars:
+                logger.info(
+                    "parent-pull: skipping L2 (Đ%s K%s) — too long (%d chars > %d)",
+                    dieu, khoan, len(content), max_l2_chars,
+                )
+                continue
+            # Mark as sibling so diversify_by_location won't count it against cap
+            p_meta = {**p_meta, "is_sibling": True}
+            p.metadata = p_meta
+            extras.append(p)
+            seen_ids.add(p.id)
+            pulled += 1
+
+    if pulled:
+        logger.info("parent-pull added %d L2 chunks", pulled)
+    return chunks + extras
+
+
 def _has_multi_frame(chunks, intent: str = "penalty") -> bool:
     """Detect when retrieval pulled ≥2 distinct (doc_id, dieu, khoan) buckets,
     indicating user query maps to multiple legal interpretations. Used to
@@ -697,10 +800,19 @@ def make_legal_rag_node(retriever, generator, llm=None) -> Callable[[AgentState]
         # text becomes ONE MORE retrieval seed. Bridges user vocabulary to
         # corpus vocabulary (e.g. "động vật" → answer uses "súc vật" →
         # embedding hits the right chunks).
+        #
+        # v4-mitigation: SKIP HyDE for intent=mixed. Reason: HyDE amplifies the
+        # DOMINANT semantic of a query — for compound queries (vd "chở 3 người
+        # + đường sắt"), the hypothetical text leans one frame and starves the
+        # other from retrieval. Multi-query rewrite already handles compound;
+        # extra HyDE causes drift. See Ảnh 2 under-listing bug.
+        intent = state.get("intent") or "penalty"
         hyde_text = ""
-        if llm is not None:
+        if llm is not None and intent != "mixed":
             hyde_text = _generate_hyde(llm, query)
-            logger.info("HyDE: %d chars", len(hyde_text))
+            logger.info("HyDE: %d chars (intent=%s)", len(hyde_text), intent)
+        elif intent == "mixed":
+            logger.info("HyDE skipped (intent=mixed — multi-query covers it)")
 
         # L2: per-query retrieval budget.
         n_pulls = len(queries) + (1 if hyde_text else 0)
@@ -809,13 +921,21 @@ def make_legal_rag_node(retriever, generator, llm=None) -> Callable[[AgentState]
         if len(all_hits) > 1:
             chunks = _diversify_by_location(chunks, target_k=top_k)
 
+        # v4+ — Parent L2 enrichment: when top-K has L3 Điểm chunks but
+        # missing their L2 Khoản parent (which contains the money amount),
+        # auto-pull the parent. Critical for penalty/mixed intent where the
+        # generator needs to cite a specific số tiền — see Ảnh 2 under-list bug.
+        # Mitigation: skip pull when L2 chunk is >1500 chars (lists many Điểm)
+        # to avoid attention hijack on Flash Lite.
+        if intent in ("penalty", "mixed"):
+            chunks = _attach_parent_l2(retriever, chunks)
+
         # v3+ — Intent-aware Confidence Judge (deterministic, score-based).
         # Different intents demand different shapes in retrieved chunks:
         #   penalty → must contain money amount
         #   fault   → must contain rule keywords
         #   procedure → must contain procedure keywords
         # If score < threshold → clarification template (no fallback to web).
-        intent = state.get("intent") or "penalty"
         ok, reasons, conf_score = _judge_retrieval_confidence(chunks, query, intent)
 
         # Deterministic multi-frame detection: ≥2 distinct (Điều, Khoản)
@@ -828,12 +948,13 @@ def make_legal_rag_node(retriever, generator, llm=None) -> Callable[[AgentState]
             for c in chunks
             if c.metadata.get("dieu") and c.metadata.get("khoan")
         })
+        vehicle_type = state.get("vehicle_type") or "any"
         logger.info(
             "RAG turn: n_queries=%d hyde=%s per_query_k=%d total_chunks=%d "
-            "intent=%s conf_score=%.2f conf_ok=%s reasons=%s "
+            "intent=%s vehicle=%s conf_score=%.2f conf_ok=%s reasons=%s "
             "multi_frame=%s khoan_set=%s",
             len(queries), bool(hyde_text), per_query_k, len(chunks),
-            intent, conf_score, ok, reasons, multi_frame, khoan_set[:20],
+            intent, vehicle_type, conf_score, ok, reasons, multi_frame, khoan_set[:20],
         )
         if not ok:
             # Keep chunks non-empty so legal_fallback_router routes to END,
@@ -856,6 +977,7 @@ def make_legal_rag_node(retriever, generator, llm=None) -> Callable[[AgentState]
             result = generator.generate(
                 query, chunk_dicts,
                 intent=intent, multi_frame=multi_frame,
+                vehicle_type=vehicle_type,
             )
         except Exception as exc:
             logger.exception("Generator failed: %s", exc)

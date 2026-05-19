@@ -18,6 +18,14 @@ Category = Literal["legal_rag", "chit_chat", "web_legal_search", "out_of_scope"]
 #   mixed       → multiple intents in one question (treat union)
 Intent = Literal["penalty", "fault", "procedure", "definition", "list", "mixed"]
 
+# Vehicle type detection — binds retrieval + generator to specific Điều:
+#   o_to       → Điều 6 NĐ 168 (ô tô, xe tương tự, xe tải, xe khách)
+#   mo_to      → Điều 7 NĐ 168 (xe mô tô, gắn máy, xe máy điện)
+#   chuyen_dung → Điều 8 NĐ 168 (xe máy chuyên dùng, máy kéo)
+#   xe_dap     → Điều 9 NĐ 168 (xe đạp, xe thô sơ)
+#   any        → no constraint (default; câu hỏi không nêu loại xe)
+VehicleType = Literal["o_to", "mo_to", "chuyen_dung", "xe_dap", "any"]
+
 
 class AgentState(TypedDict, total=False):
     query: str
@@ -27,6 +35,7 @@ class AgentState(TypedDict, total=False):
     chat_history: list[dict]
     category: Category
     intent: Intent               # fine-grained intent within legal_rag (or None)
+    vehicle_type: VehicleType    # which Điều in NĐ 168 to bias retrieval + generator
     multi_frame: bool            # True when ≥2 distinct (Điều, Khoản) in final chunks
     chunks: list[dict]
     answer: str

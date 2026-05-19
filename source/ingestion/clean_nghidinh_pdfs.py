@@ -71,8 +71,10 @@ logger = setup_logging()
 # ---------------------------------------------------------------------------
 EXCLUDED_FILES = {
     "nd17_2026_sua_doi_bo_sung.pdf",    # Hàng không
-    "nd81_2026_XuPhat_DuongSat.pdf",    # Đường sắt
     "TT130_2025_BTC_LePhi_CapBang.pdf", # BQP
+    # NOTE: nd81_2026_XuPhat_DuongSat.pdf — KEEP (added 2026-05-19): Điều 13
+    # quy định xử phạt người điều khiển phương tiện đường bộ tại đường ngang
+    # đường sắt (có tước GPLX). Strategy below filters to relevant articles.
 }
 
 # ---------------------------------------------------------------------------
@@ -91,6 +93,14 @@ FILE_STRATEGIES = {
         "annotate_diem_tru": True,  # Ghi chú số điểm trừ vào bảng
     },
     "nd336_2025_xu_phat_van_tai.pdf": {
+        "keep_all": True,
+    },
+    "nd81_2026_XuPhat_DuongSat.pdf": {
+        # Keep all — most articles are about railway industry, but Điều 13
+        # ("quy tắc giao thông tại đường ngang") explicitly governs đường bộ
+        # drivers (with GPLX revocation). Filtering would risk losing it.
+        # Downstream metadata `topic` distinguishes railway-industry vs
+        # road-driver articles for retrieval scoping.
         "keep_all": True,
     },
     "nd100_2019_xu_phat.pdf": {

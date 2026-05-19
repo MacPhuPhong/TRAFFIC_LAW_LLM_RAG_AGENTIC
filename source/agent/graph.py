@@ -79,7 +79,7 @@ def build_graph(
     workflow = StateGraph(AgentState)
 
     workflow.add_node("analyzer", make_analyzer_node(llm))
-    workflow.add_node("legal_rag", make_legal_rag_node(retriever, generator))
+    workflow.add_node("legal_rag", make_legal_rag_node(retriever, generator, llm=llm))
     workflow.add_node("chit_chat", make_chit_chat_node(llm))
     workflow.add_node("out_of_scope", out_of_scope_node)
     workflow.add_node("web_search", make_web_search_node(tavily_tool, llm))

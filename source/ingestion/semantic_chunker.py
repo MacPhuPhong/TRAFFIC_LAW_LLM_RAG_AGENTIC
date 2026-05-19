@@ -124,6 +124,19 @@ METADATA_RULES: dict[str, dict] = {
         "effective_date": "2025-07-01",   # cập nhật theo thực tế
         "topic":          "Xử phạt vi phạm giao thông",
     },
+    "nd81_2026_XuPhat_DuongSat": {
+        "doc_id":         "81/2026/NĐ-CP",
+        "title":          "Nghị định 81/2026/NĐ-CP (Xử phạt vi phạm hành chính lĩnh vực giao thông đường sắt)",
+        "issuer":         "Chính phủ",
+        "status":         "active",
+        "effective_date": "2026-05-15",
+        "topic":          "Xử phạt vi phạm giao thông đường sắt",
+        # Phần lớn điều này áp dụng cho NHÂN VIÊN NGÀNH ĐƯỜNG SẮT. Tuy nhiên
+        # Điều 13 ('Xử phạt các hành vi vi phạm quy định về quy tắc giao thông
+        # tại đường ngang') quy định xử phạt NGƯỜI ĐIỀU KHIỂN PHƯƠNG TIỆN GIAO
+        # THÔNG ĐƯỜNG BỘ qua đường ngang đường sắt, kèm tước GPLX. Đây là Điều
+        # quan trọng nhất cho phạm vi chatbot.
+    },
     "nd100_2019_xu_phat": {
         "doc_id":         "100/2019/NĐ-CP",
         "title":          "Nghị định 100/2019/NĐ-CP (ĐƯỜNG SẮT — mảng đường bộ đã bãi bỏ)",

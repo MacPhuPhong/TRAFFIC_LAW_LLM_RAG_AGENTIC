@@ -27,6 +27,9 @@ SYSTEM_PROMPT = """Bạn là Trợ lý Pháp lý Giao thông Việt Nam. Nhiệm
 QUY TẮC BẮT BUỘC:
 1. Trả lời HOÀN TOÀN bằng tiếng Việt.
 2. Chỉ sử dụng thông tin trong NGỮ CẢNH. Tuyệt đối KHÔNG dùng kiến thức bên ngoài, KHÔNG suy đoán, KHÔNG bịa đặt.
+   ⚠️ ĐẶC BIỆT: KHÔNG được mở đầu câu trả lời bằng câu cảnh báo kiểu
+   "⚠️ Lưu ý: Thông tin tra cứu từ Internet mở..." — câu đó CHỈ thuộc nhánh
+   web_search; bạn đang trả lời từ corpus pháp lý chính thống.
 3. Mỗi khẳng định phải được trích dẫn theo định dạng: [Điều X, Khoản Y — {tên văn bản} ({doc_id})]. Nếu không có Khoản, bỏ phần "Khoản Y".
 4. Nếu NGỮ CẢNH không chứa đủ thông tin để trả lời, trả lời đúng một câu: "{REFUSAL}"
 5. Không thêm lời dẫn, không mở đầu bằng "Dựa trên tài liệu...", đi thẳng vào câu trả lời.
@@ -152,6 +155,28 @@ QUY TẮC PHÂN BIỆT NGỮ CẢNH:
       bịa Điều/Khoản.
     - Tuyệt đối không trả về câu từ chối ở Quy tắc 4 cho dạng câu hỏi này khi
       ngữ cảnh có ÍT NHẤT 1 chunk khớp với 1 hành vi.
+
+15. ĐA-HÀNH-VI — KHI CONTEXT CÓ ≥2 KHOẢN MÔ TẢ HÀNH VI KHÁC NHAU:
+
+    Nếu sau khi đọc NGỮ CẢNH có ≥2 Khoản KHÁC NHAU mô tả 2 HÀNH VI vi phạm
+    khác nhau cùng KHỚP với câu hỏi (vd: "vượt đèn đỏ giao thông" vs "vượt
+    đường ngang đường sắt khi đèn nhấp nháy"), LIỆT KÊ TẤT CẢ:
+
+      • Mở đầu: "Câu hỏi của bạn có thể liên quan đến {N} hành vi khác nhau
+        theo Nghị định 168/2024; dưới đây là cả {N} trường hợp:"
+      • Heading `### Trường hợp 1 / 2 / ...` cho mỗi Khoản.
+      • Mỗi heading PHẢI mô tả hành vi cụ thể + mức phạt + Điều/Khoản/Điểm
+        + loại xe. KHÔNG bỏ Khoản nào.
+
+    Hệ thống retrieval đã filter chunks không liên quan ở tầng trước
+    (HyDE + Confidence Judge), nên mọi Khoản trong NGỮ CẢNH đều đáng để
+    cân nhắc. KHÔNG cần đoán xem chunk nào "lạc đề" — chunk đến đây là
+    relevant.
+
+    PHÂN BIỆT:
+    - 2 Khoản khác HÀNH VI       → tách Trường hợp riêng (rule này).
+    - 2 Khoản cùng HÀNH VI khác LOẠI XE (Điều 6 vs 7 vs 8) → gộp dưới
+      cùng heading, tách sub-bullet theo loại xe (Quy tắc 6).
 """.replace("{REFUSAL}", REFUSAL_PHRASE)
 
 
@@ -197,7 +222,7 @@ class LegalAnswerGenerator:
         self,
         provider: str = "openai",
         model: str | None = None,
-        temperature: float = 0.1,
+        temperature: float = 0.0,
         api_key: str | None = None,
         max_tokens: int = 1024,
     ):
@@ -240,19 +265,57 @@ class LegalAnswerGenerator:
 
         logger.info(f"LegalAnswerGenerator: {self.provider} / {self.model_name}")
 
-    def generate(self, query: str, chunks: list[dict]) -> dict:
+    def generate(
+        self,
+        query: str,
+        chunks: list[dict],
+        *,
+        intent: str = "penalty",
+        multi_frame: bool = False,
+    ) -> dict:
         """
         Produce a grounded answer.
 
-        `chunks` is a list of dicts with keys {id, score, content, metadata}
-        (e.g. the output of RetrievedChunk.to_dict()).
+        `chunks` is a list of dicts with keys {id, score, content, metadata}.
+
+        `intent` (from analyzer): penalty / fault / procedure / definition /
+            list / mixed. Used to inject a targeted instruction so the LLM
+            doesn't need to infer query type from rules alone.
+
+        `multi_frame`: True when retrieval pulled ≥2 distinct (Điều, Khoản).
+            When True, the model is INSTRUCTED to enumerate "### Trường hợp
+            1 / 2 / ..." headings instead of writing a single mạch lạc answer.
 
         Returns {"answer": str, "sources": [...], "refused": bool, "model": str}.
         """
         context = _build_context(chunks)
+
+        # Intent hint — short, deterministic suffix appended to the prompt to
+        # tell the LLM what shape of answer the user expects. Replaces the
+        # need for several LLM-inferred branches inside SYSTEM_PROMPT.
+        intent_hints = {
+            "penalty":    "INTENT: penalty — user hỏi MỨC PHẠT. Trả lời PHẢI có số tiền cụ thể (in đậm) + Điều/Khoản/Điểm + loại xe.",
+            "fault":      "INTENT: fault — user hỏi PHÂN ĐỊNH LỖI. Áp dụng Quy tắc 14 (4 bước: hành vi → đối chiếu → kết luận → lưu ý CSGT).",
+            "procedure":  "INTENT: procedure — user hỏi THỦ TỤC / QUY TRÌNH. Trả lời theo bước; số tiền (lệ phí) là phụ.",
+            "definition": "INTENT: definition — user hỏi KHÁI NIỆM. Trả lời mô tả ngắn gọn, không cần liệt kê mức phạt.",
+            "list":       "INTENT: list — user yêu cầu LIỆT KÊ. Rà soát toàn bộ NGỮ CẢNH, gom các trường hợp/hành vi thành danh sách đầy đủ.",
+            "mixed":      "INTENT: mixed — user hỏi cả mức phạt VÀ phân định lỗi VÀ/HOẶC quy tắc. Trả lời đủ 3 phần: (1) mức phạt theo NĐ 168, (2) quy tắc bị vi phạm theo Luật 36, (3) lưu ý CSGT điều tra theo TT 72.",
+        }
+        intent_hint = intent_hints.get(intent, intent_hints["penalty"])
+
+        multi_frame_hint = ""
+        if multi_frame:
+            multi_frame_hint = (
+                "\n\n⚠️ HỆ THỐNG ĐÃ XÁC NHẬN multi_frame=True: ngữ cảnh có ≥2 "
+                "(Điều, Khoản) khác nhau cùng KHỚP câu hỏi. BẮT BUỘC áp dụng "
+                "Quy tắc 15: liệt kê hết các trường hợp dưới headings "
+                "'### Trường hợp 1 / 2 / ...'. KHÔNG chọn ngầm 1 Khoản."
+            )
+
         user_content = (
             f"NGỮ CẢNH:\n{context}\n\n"
             f"CÂU HỎI: {query}\n\n"
+            f"{intent_hint}{multi_frame_hint}\n\n"
             f"Hãy trả lời dựa CHỈ trên ngữ cảnh trên, tuân thủ các quy tắc ở hệ thống."
         )
 
@@ -263,6 +326,26 @@ class LegalAnswerGenerator:
 
         response = self.llm.invoke(messages)
         answer = response.content.strip() if hasattr(response, "content") else str(response)
+
+        # Post-process: strip Gemini Flash Lite hallucination of the web-search
+        # warning prefix at the start of corpus-grounded answers. Despite the
+        # explicit Rule 2 prohibition, the model occasionally emits it from
+        # training-data exposure to RAG-style outputs. Defensive cleanup keeps
+        # the user-facing answer aligned with its actual source (corpus).
+        _BAD_PREFIXES = (
+            "⚠️ Lưu ý: Thông tin tra cứu từ Internet mở",
+            "⚠ Lưu ý: Thông tin tra cứu từ Internet mở",
+            "Lưu ý: Thông tin tra cứu từ Internet mở",
+        )
+        for bad in _BAD_PREFIXES:
+            if answer.lstrip().startswith(bad):
+                # Drop the entire first paragraph that contains the warning
+                idx = answer.find("\n\n")
+                if idx > 0:
+                    answer = answer[idx + 2:].lstrip()
+                else:
+                    answer = answer[len(bad):].lstrip(" ,.;:\n")
+                break
 
         answer_trim = answer.strip().rstrip(".")
         refused = answer_trim == REFUSAL_PHRASE.rstrip(".")

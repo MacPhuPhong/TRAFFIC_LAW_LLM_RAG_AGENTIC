@@ -1,7 +1,7 @@
 // src/components/AssistantMessage.tsx
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Citation, Message } from '@/lib/types';
@@ -43,6 +43,37 @@ export function AssistantMessage({ msg, streaming }: Props) {
   const [open, setOpen] = useState(false);
   const citations = msg.citations ?? [];
 
+  // 4-phase loading animation: received → thinking → typing → done.
+  // Cycle through THINKING_STEPS every ~700ms while waiting for first token.
+  // Once content arrives, mark all steps as 'done' (active=-1) then fade out
+  // 1.2s later so the UX moment is always visible.
+  const [thinkingStep, setThinkingStep] = useState(0);
+  const [hideThinking, setHideThinking] = useState(false);
+  const startedAt = useRef<number>(0);
+
+  useEffect(() => {
+    if (!streaming) {
+      setThinkingStep(0);
+      setHideThinking(false);
+      startedAt.current = 0;
+      return;
+    }
+    if (startedAt.current === 0) startedAt.current = Date.now();
+    if (msg.content) {
+      // Schedule hide after the minimum visibility window has elapsed.
+      const remaining = Math.max(0, 1200 - (Date.now() - startedAt.current));
+      const t = setTimeout(() => setHideThinking(true), remaining);
+      return () => clearTimeout(t);
+    }
+    const id = setInterval(() => {
+      setThinkingStep((s) => (s < THINKING_STEPS.length - 1 ? s + 1 : s));
+    }, 700);
+    return () => clearInterval(id);
+  }, [streaming, msg.content]);
+
+  const showThinking = streaming && !hideThinking;
+  const pipelineActive = msg.content ? -1 : thinkingStep;
+
   function onCite(n: number) {
     setActive(n);
     setOpen(true);
@@ -80,15 +111,18 @@ export function AssistantMessage({ msg, streaming }: Props) {
           )}
         </div>
 
-        {/* Loading states while no content yet */}
-        {streaming && !msg.content && (
-          <div className="flex flex-col gap-3 mb-2">
-            <ThinkingPipeline steps={THINKING_STEPS} active={1} />
-            <div className="flex flex-col gap-1.5 mt-1">
-              <ShimmerLine height={10} width="92%" />
-              <ShimmerLine height={10} width="78%" delay={0.1} />
-              <ShimmerLine height={10} width="60%" delay={0.2} />
-            </div>
+        {/* Loading states — animated pipeline cycling through THINKING_STEPS.
+            Stays visible at least 1.2s for UX even if first token is fast. */}
+        {showThinking && (
+          <div className="flex flex-col gap-3 mb-3 tlgt-fade-in">
+            <ThinkingPipeline steps={THINKING_STEPS} active={pipelineActive} />
+            {!msg.content && (
+              <div className="flex flex-col gap-1.5 mt-1">
+                <ShimmerLine height={10} width="92%" />
+                <ShimmerLine height={10} width="78%" delay={0.1} />
+                <ShimmerLine height={10} width="60%" delay={0.2} />
+              </div>
+            )}
           </div>
         )}
 

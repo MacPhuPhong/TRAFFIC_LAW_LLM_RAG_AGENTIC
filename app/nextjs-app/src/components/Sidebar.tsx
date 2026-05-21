@@ -4,6 +4,8 @@
 import { useMemo, useState } from 'react';
 import { useChatStore, groupByDate } from '@/lib/store';
 import { Icon } from './Icon';
+import { Logo } from './Logo';
+import { LOGO_VARIANT, BRAND_NAME, BRAND_SUBTITLE } from '@/lib/config';
 
 export function Sidebar({
   onCollapse,
@@ -30,24 +32,16 @@ export function Sidebar({
     <aside className="w-[85vw] max-w-[300px] md:w-[280px] h-full shrink-0 bg-surface border-r border-border flex flex-col">
       {/* Brand */}
       <div className="px-[18px] pt-[18px] pb-3 flex items-center gap-3">
-        <div
-          className="w-9 h-9 rounded-[10px] grid place-items-center text-white shrink-0"
-          style={{ background: 'linear-gradient(135deg, var(--primary), var(--primary-hover))' }}
-        >
-          <Icon name="gavel" size={18} strokeWidth={1.8} />
-        </div>
+        <Logo size={36} variant={LOGO_VARIANT} />
         <div className="min-w-0 flex-1">
-          <div className="font-semibold text-[14.5px] tracking-tightish">Trợ lý Luật Giao thông</div>
-          <div className="text-[11.5px] text-text-faint">Tra cứu thông minh</div>
+          <div className="font-semibold text-[14.5px] tracking-tightish">{BRAND_NAME}</div>
+          <div className="text-[11.5px] text-text-faint">{BRAND_SUBTITLE}</div>
         </div>
       </div>
 
       {/* New chat */}
       <div className="px-3.5 pb-2.5">
-        <button
-          onClick={() => { newConversation(); onNavigate?.(); }}
-          className="btn-primary w-full"
-        >
+        <button onClick={() => { newConversation(); onNavigate?.(); }} className="btn-primary w-full">
           <Icon name="plus" size={15} strokeWidth={2.2} />
           Cuộc hội thoại mới
         </button>

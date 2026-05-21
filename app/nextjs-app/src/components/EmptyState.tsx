@@ -2,6 +2,8 @@
 'use client';
 
 import { Icon } from './Icon';
+import { Logo } from './Logo';
+import { LOGO_VARIANT } from '@/lib/config';
 
 interface Props { onPick: (q: string) => void; }
 
@@ -17,21 +19,13 @@ export function EmptyState({ onPick }: Props) {
   const greeting = hour < 11 ? 'Chào buổi sáng' : hour < 18 ? 'Chào buổi chiều' : 'Chào buổi tối';
 
   return (
-    <div className="max-w-[760px] mx-auto px-4 md:px-8 py-8 md:py-10">
-      <div className="text-center mb-7 md:mb-9">
-        <div
-          className="inline-grid place-items-center w-14 h-14 md:w-16 md:h-16 rounded-2xl text-white mb-4"
-          style={{
-            background: 'linear-gradient(135deg, var(--primary), var(--primary-hover))',
-            boxShadow: '0 12px 28px rgba(15,45,92,.22)',
-          }}
-        >
-          <Icon name="gavel" size={28} strokeWidth={1.8} />
-        </div>
-        <h1 className="m-0 text-2xl md:text-3xl font-[650] tracking-tighter2 text-text">
+    <div className="max-w-[760px] mx-auto px-8 py-10">
+      <div className="text-center mb-9">
+        <Logo size={64} variant={LOGO_VARIANT} className="mx-auto mb-4" />
+        <h1 className="m-0 text-3xl font-[650] tracking-tighter2 text-text">
           {greeting}, hỏi gì về luật giao thông?
         </h1>
-        <p className="mt-2 mb-0 text-text-muted text-[14px] md:text-[15px]">
+        <p className="mt-2 mb-0 text-text-muted text-[15px]">
           Tra cứu mức phạt, quy định đăng ký, GPLX và các thông tư mới nhất theo Nghị định 168/2024.
         </p>
       </div>

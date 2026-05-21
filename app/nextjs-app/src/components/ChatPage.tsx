@@ -18,8 +18,7 @@ export function ChatPage() {
 
   const conv = conversations.find((c) => c.id === activeId) ?? null;
 
-  // Open sidebar by default on desktop (>= md). Stay closed on mobile to give
-  // chat full width — user can open it via the menu button.
+  // Open sidebar by default on desktop; stay closed on mobile.
   useEffect(() => {
     if (typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches) {
       setSidebarOpen(true);
@@ -65,7 +64,7 @@ export function ChatPage() {
         />
       )}
 
-      {/* Sidebar: fixed drawer on mobile, in-flow on desktop */}
+      {/* Sidebar: drawer on mobile, in-flow on desktop */}
       {sidebarOpen && (
         <div className="fixed md:relative inset-y-0 left-0 z-50 md:z-auto">
           <Sidebar

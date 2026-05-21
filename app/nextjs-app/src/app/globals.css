@@ -143,3 +143,55 @@
     color: var(--text-muted);
   }
 }
+
+/* ─── Animations (typing, shimmer, pop, etc.) ──────────────────────── */
+@keyframes tlgt-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+@keyframes tlgt-bounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: .45; }
+  40% { transform: translateY(-3px); opacity: 1; }
+}
+@keyframes tlgt-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes tlgt-pulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+@keyframes tlgt-fadein {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes tlgt-pop {
+  0% { transform: scale(.6); opacity: 0; }
+  60% { transform: scale(1.15); }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes tlgt-spin { to { transform: rotate(360deg); } }
+@keyframes tlgt-signal {
+  0%, 33% { opacity: .25; }
+  16% { opacity: 1; }
+}
+
+.tlgt-cursor::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  vertical-align: -2px;
+  margin-left: 2px;
+  background: currentColor;
+  animation: tlgt-blink 1s steps(2) infinite;
+}
+.tlgt-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  margin: 0 2px;
+  animation: tlgt-bounce 1.2s infinite;
+}
+.tlgt-dot:nth-child(2) { animation-delay: .15s; }
+.tlgt-dot:nth-child(3) { animation-delay: .3s; }
+.tlgt-fade-in { animation: tlgt-fadein .35s ease-out both; }
+.tlgt-pop { animation: tlgt-pop .35s cubic-bezier(.34, 1.56, .64, 1) both; }
+.tlgt-pulse { animation: tlgt-pulse 1.8s ease-in-out infinite; }
+.tlgt-spin { animation: tlgt-spin 1.2s linear infinite; }

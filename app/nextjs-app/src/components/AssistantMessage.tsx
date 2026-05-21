@@ -6,6 +6,9 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Citation, Message } from '@/lib/types';
 import { Icon } from './Icon';
+import { Logo } from './Logo';
+import { TypingDots, TypingCursor, ThinkingPipeline, ShimmerLine } from './LoadingStates';
+import { LOGO_VARIANT, BRAND_NAME, THINKING_STEPS } from '@/lib/config';
 
 interface Props { msg: Message; streaming?: boolean; }
 
@@ -59,38 +62,56 @@ export function AssistantMessage({ msg, streaming }: Props) {
 
   return (
     <div className="flex gap-3.5 mb-3.5">
-      <div
-        className="w-8 h-8 rounded-[10px] grid place-items-center text-white shrink-0"
-        style={{ background: 'linear-gradient(135deg, var(--primary), var(--primary-hover))' }}
-      >
-        <Icon name="gavel" size={16} strokeWidth={1.8} />
-      </div>
+      <Logo size={32} variant={LOGO_VARIANT} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-2 text-[12px] text-text-faint">
-          <span className="font-semibold text-text">Trợ lý Luật Giao thông</span>
+          <span className="font-semibold text-text">{BRAND_NAME}</span>
           {citations.length > 0 && (
             <>
               <span>•</span>
               <span>Dựa trên {citations.length} nguồn</span>
             </>
           )}
+          {streaming && (
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10.5px] font-medium bg-accent-soft text-primary border border-border">
+              <span className="w-1.5 h-1.5 rounded-full bg-primary tlgt-pulse" />
+              streaming
+            </span>
+          )}
         </div>
+
+        {/* Loading states while no content yet */}
+        {streaming && !msg.content && (
+          <div className="flex flex-col gap-3 mb-2">
+            <ThinkingPipeline steps={THINKING_STEPS} active={1} />
+            <div className="flex flex-col gap-1.5 mt-1">
+              <ShimmerLine height={10} width="92%" />
+              <ShimmerLine height={10} width="78%" delay={0.1} />
+              <ShimmerLine height={10} width="60%" delay={0.2} />
+            </div>
+          </div>
+        )}
 
         <div className="prose-answer text-[14.5px] text-text">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
-              p: ({ children }) => <p>{processChildren(children, onCite, active)}</p>,
+              p: ({ children }) => (
+                <p>
+                  {processChildren(children, onCite, active)}
+                  {streaming && msg.content && <TypingCursor />}
+                </p>
+              ),
               li: ({ children }) => <li>{processChildren(children, onCite, active)}</li>,
             }}
           >
-            {msg.content || (streaming ? '...' : '')}
+            {msg.content}
           </ReactMarkdown>
         </div>
 
-        {/* Citations collapsible */}
+        {/* Citation badges arriving */}
         {citations.length > 0 && (
-          <div className="mt-3 border border-border rounded-xl bg-surface overflow-hidden">
+          <div className="mt-3 border border-border rounded-xl bg-surface overflow-hidden tlgt-fade-in">
             <button
               onClick={() => setOpen(!open)}
               className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[13px] font-medium text-text"

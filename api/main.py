@@ -109,17 +109,32 @@ async def lifespan(app: FastAPI):
     rerank_top_n = int(os.getenv("RERANK_TOP_N", "30"))
     # Strip whitespace — HF Spaces UI sometimes appends trailing newline when
     # pasting secrets, which causes httpx "Illegal header value" errors.
-    _qdrant_url = (os.getenv("QDRANT_URL") or "").strip() or None
-    _qdrant_api_key = (os.getenv("QDRANT_API_KEY") or "").strip() or None
-    retriever = TrafficHybridRetriever(
-        qdrant_host=os.getenv("QDRANT_HOST", "localhost").strip(),
-        qdrant_port=int(os.getenv("QDRANT_PORT", "6333")),
-        qdrant_url=_qdrant_url,
-        qdrant_api_key=_qdrant_api_key,
-        enable_reranker=enable_reranker,
-        reranker_model=reranker_model,
-        rerank_top_n=rerank_top_n,
-    )
+    vector_db = (os.getenv("VECTOR_DB") or "qdrant").strip().lower()
+    if vector_db == "pgvector":
+        from source.rag_core.retriever_pgvector import PgVectorHybridRetriever
+        pg_url = (os.getenv("VECTOR_DB_URL") or "").strip()
+        if not pg_url:
+            raise RuntimeError("VECTOR_DB=pgvector requires VECTOR_DB_URL env var.")
+        if pg_url.startswith("postgres://"):
+            pg_url = pg_url.replace("postgres://", "postgresql://", 1)
+        retriever = PgVectorHybridRetriever(
+            pg_url=pg_url,
+            enable_reranker=enable_reranker,
+            reranker_model=reranker_model,
+            rerank_top_n=rerank_top_n,
+        )
+    else:
+        _qdrant_url = (os.getenv("QDRANT_URL") or "").strip() or None
+        _qdrant_api_key = (os.getenv("QDRANT_API_KEY") or "").strip() or None
+        retriever = TrafficHybridRetriever(
+            qdrant_host=os.getenv("QDRANT_HOST", "localhost").strip(),
+            qdrant_port=int(os.getenv("QDRANT_PORT", "6333")),
+            qdrant_url=_qdrant_url,
+            qdrant_api_key=_qdrant_api_key,
+            enable_reranker=enable_reranker,
+            reranker_model=reranker_model,
+            rerank_top_n=rerank_top_n,
+        )
     if enable_reranker:
         logger.info("Reranker enabled (model=%s, top_n=%d)",
                     reranker_model or "BAAI/bge-reranker-v2-m3", rerank_top_n)

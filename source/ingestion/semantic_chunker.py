@@ -441,14 +441,21 @@ RE_DIEU   = re.compile(r"(?:##\s*)?Điều\s+(\d+)[.:]\s*(.*)", re.IGNORECASE)
 # Chỉ capture 1 group (số khoản) để split chính xác
 RE_KHOAN  = re.compile(r"^(\d+)\.(?=\s+[A-ZĐÀÁẠẢÃẮẰẲẴẶẤẦẨẪẬÉÈẺẼẸẾỀỂỄỆÍÌỈĨỊÓÒỎÕỌỐỒỔỖỘỚỜỞỠỢÚÙỦŨỤỨỪỬỮỰÝỲỶỸỴ])", re.MULTILINE)
 
-# Điểm: "a) ..." / "b) ..." (chữ thường + ngoặc đơn)
-# Chỉ capture 1 group (nhãn điểm)
-RE_DIEM   = re.compile(r"^([a-z])\)(?=\s+)", re.MULTILINE)
+# Điểm: "a) ..." / "đ) ..." (chữ thường latin + tiếng Việt 'đ' + ngoặc đơn)
+# v2 (2026-05-19): bổ sung 'đ' và cho phép Điểm cùng dòng sau dấu ';' — vì
+# format pháp lý VN thường có "d) ...; đ) ..." cùng dòng (xem TT 17/2018/VPCP).
+RE_DIEM   = re.compile(r"(?:^|;\s+)([a-zđ])\)(?=\s+)", re.MULTILINE)
 
-# Ngưỡng split
-THRESH_DIEU  = 600   # token — nếu Điều > ngưỡng này → split xuống Khoản
-THRESH_KHOAN = 500   # token — nếu Khoản > ngưỡng này → split xuống Điểm
-MIN_CHUNK    = 30    # token — chunk quá nhỏ thì bỏ
+# Ngưỡng split (token-level)
+THRESH_DIEU          = 600   # Điều > ngưỡng này → split xuống Khoản
+THRESH_KHOAN_DEFAULT = 500   # Khoản > ngưỡng → split xuống Điểm (Luật/TT)
+THRESH_KHOAN_STRICT  = 80    # Strict cho Nghị định phạt (cần granular Điểm)
+
+# MIN_CHUNK tách theo level (v2): L1/L2 giữ 30 (tránh noise); L3 hạ 5 vì
+# mỗi Điểm pháp lý vốn ngắn (1 hành vi = 1 câu 10-20 token), nhưng vẫn là
+# target retrieval độc lập. Filter 30 ở Điểm gây MẤT ~70% Điểm trong NĐ 168.
+MIN_CHUNK         = 30   # giữ tương thích — code cũ vẫn dùng được
+MIN_CHUNK_DIEM    = 5    # L3 (Điểm) — hạ xuống 5 token
 
 # ---------------------------------------------------------------------------
 # HierarchicalLegalSplitter
@@ -516,9 +523,15 @@ class HierarchicalLegalSplitter:
 
         return khoans if khoans else [("0", text)]
 
-    def split_khoan_into_diems(self, text: str) -> list[tuple[str, str]]:
+    def split_khoan_into_diems(self, text: str, enrich_preamble: bool = True) -> list[tuple[str, str]]:
         """
         Tách nội dung một Khoản thành list of (diem_label, diem_content).
+
+        v2 (2026-05-19): nếu `enrich_preamble=True`, mỗi L3 chunk được
+        PREPEND phần preamble của Khoản (cụm "Phạt tiền X-Y đồng đối với ..."
+        trước Điểm đầu tiên). Lý do: Điểm pháp lý thường chỉ chứa mô tả hành
+        vi (~10-20 token), không có số tiền — cần preamble để chunk tự chứa
+        đủ thông tin {mức phạt + hành vi} cho retrieval Điểm-level chính xác.
         """
         parts = RE_DIEM.split(text)
         diems = []
@@ -526,14 +539,22 @@ class HierarchicalLegalSplitter:
         if len(parts) <= 1:
             return [("", text)]
 
-        if parts[0].strip():
-            diems.append(("", parts[0].strip()))
+        preamble = parts[0].strip() if parts[0].strip() else ""
+        if preamble:
+            diems.append(("", preamble))
 
         i = 1
         while i + 1 < len(parts):
             label   = parts[i]
             content = parts[i + 1]
-            diems.append((label, f"{label}){content}"))
+            diem_body = f"{label}){content}".strip()
+            if enrich_preamble and preamble:
+                # Prepend preamble so each Điểm chunk is self-contained:
+                # "Phạt tiền X-Y đồng đối với...\nk) Dàn hàng ngang từ 03 xe..."
+                enriched = f"{preamble}\n{diem_body}"
+            else:
+                enriched = diem_body
+            diems.append((label, enriched))
             i += 2
 
         return diems if diems else [("", text)]
@@ -572,12 +593,31 @@ class HierarchicalLegalSplitter:
                 chunks.append(chunk)
             else:
                 # ── Level 2: Split theo Khoản ──
+                # v2 (2026-05-19): Logic split L3 đổi từ pure threshold sang
+                # "split nếu nghidinh + có ≥2 Điểm OR Khoản > THRESH". Nghị
+                # định phạt cần granular L3 chunks để retrieval Điểm-level
+                # chính xác — kể cả Khoản nhỏ (vd Đ7 K10 = 71 token, 4 Điểm).
                 khoans = self.split_article_into_khoans(dieu_content)
+                # Pick threshold based on document type
+                effective_thresh = (
+                    THRESH_KHOAN_STRICT if doc_type == "nghidinh"
+                    else THRESH_KHOAN_DEFAULT
+                )
+
                 for khoan_num, khoan_content in khoans:
                     if count_tokens(khoan_content) < MIN_CHUNK:
                         continue
 
-                    if count_tokens(khoan_content) <= THRESH_KHOAN:
+                    # Decide whether to split into L3 Điểm chunks.
+                    # Trigger split if EITHER (a) Khoản is large (size-based)
+                    # OR (b) Nghị định with ≥2 distinct Điểm (semantic-based).
+                    has_multi_diem = len(RE_DIEM.findall(khoan_content)) >= 2
+                    should_split_l3 = (
+                        count_tokens(khoan_content) > effective_thresh
+                        or (doc_type == "nghidinh" and has_multi_diem)
+                    )
+
+                    if not should_split_l3:
                         chunk = self._make_chunk(
                             text        = khoan_content,
                             doc_meta    = doc_meta,
@@ -592,9 +632,16 @@ class HierarchicalLegalSplitter:
                         chunks.append(chunk)
                     else:
                         # ── Level 3: Split theo Điểm ──
-                        diems = self.split_khoan_into_diems(khoan_content)
+                        # enrich_preamble=True: mỗi L3 chunk chứa cụm
+                        # "Phạt tiền X-Y đồng..." của Khoản preamble + nội dung
+                        # Điểm cụ thể → chunk self-contained.
+                        diems = self.split_khoan_into_diems(
+                            khoan_content, enrich_preamble=True,
+                        )
                         for diem_label, diem_content in diems:
-                            if count_tokens(diem_content) < MIN_CHUNK:
+                            # v2: MIN_CHUNK_DIEM (=5) thay MIN_CHUNK (=30)
+                            # vì Điểm pháp lý ngắn nhưng vẫn là target retrieval.
+                            if count_tokens(diem_content) < MIN_CHUNK_DIEM:
                                 continue
                             chunk = self._make_chunk(
                                 text        = diem_content,

@@ -432,7 +432,13 @@ def _generate_hyde(llm, query: str) -> str:
 # Confidence-based routing — replaces "generator refuse → fallback web" path
 # for queries where retrieval clearly missed (vague / out-of-corpus). Score-
 # based, intent-aware: different intents demand different chunk shapes.
-CONFIDENCE_MIN_CHUNKS = 3
+# v6 (2026-05-22): lowered MIN_CHUNKS from 3 → 1. With v6 chunker (4423
+# chunks, 234% more L3 Điểm), `_attach_siblings` and parent-L2 enrich now
+# mark majority of retrieved chunks as is_sibling=True after RRF fuse → the
+# old "≥3 non-sibling" floor gave false rejects on legitimate queries (eg
+# RQ-001 "vượt đèn đỏ xe máy" returned the clarification template despite
+# having 30 valid retrieved chunks). Other score-based checks below remain.
+CONFIDENCE_MIN_CHUNKS = 1
 # RRF-fused score = Σ 1/(60+rank). Top-1 in 1 list ≈ 0.0164; in 2 lists ≈
 # 0.0328. Floor 0.010 admits genuine hits while rejecting truly weak matches.
 CONFIDENCE_MIN_TOP_SCORE = 0.010

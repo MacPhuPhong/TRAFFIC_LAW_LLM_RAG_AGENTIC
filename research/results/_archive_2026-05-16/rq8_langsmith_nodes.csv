@@ -1,0 +1,16 @@
+run_name,run_type,count,mean_s,p50_s,p95_s,error_rate,total_tokens_mean,cost_usd_mean,source
+ChatGoogleGenerativeAI,llm,483,9.604,4.184,28.452,0.008,14121.1,0.004272,langsmith
+TrafficHybridRetriever.get_relevant_chunks,retriever,432,0.133,0.102,0.215,0.174,0.0,0.0,langsmith
+rrf_fuse,tool,357,0.001,0.001,0.001,0.0,0.0,0.0,langsmith
+PydanticToolsParser,parser,72,0.001,0.0,0.004,0.0,0.0,0.0,langsmith
+RunnableSequence,chain,72,8.603,6.63,22.456,0.0,3406.1,0.000974,langsmith
+legal_fallback_router,chain,55,0.003,0.002,0.007,0.0,0.0,0.0,langsmith
+LangGraph,chain,51,36.941,17.155,58.55,0.0,12029.0,0.006659,langsmith
+route_by_category,chain,47,0.001,0.0,0.003,0.0,0.0,0.0,langsmith
+analyzer,chain,47,9.261,5.829,24.731,0.0,1005.5,0.000606,langsmith
+legal_rag,chain,38,35.53,12.676,56.319,0.0,14661.6,0.007391,langsmith
+LangGraphUpdateState,chain,17,0.005,0.005,0.007,0.0,0.0,0.0,langsmith
+out_of_scope,chain,5,0.0,0.0,0.0,0.0,0.0,0.0,langsmith
+web_finalize,chain,4,0.002,0.002,0.002,0.0,0.0,0.0,langsmith
+web_search,chain,4,15.399,10.312,10.312,0.0,2233.8,0.001704,langsmith
+chit_chat,chain,3,10.765,5.994,5.994,0.0,48.0,9e-05,langsmith

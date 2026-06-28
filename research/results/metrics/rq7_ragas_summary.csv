@@ -1,0 +1,5 @@
+metric,n,mean,min,max,judge_model,pipeline,elapsed_s
+faithfulness,35,0.5499,0.0,1.0,gpt-4o-mini,agentic_rag,186.1
+answer_relevancy,0,,,,gpt-4o-mini,agentic_rag,186.1
+context_precision,35,0.8851,0.0,1.0,gpt-4o-mini,agentic_rag,186.1
+context_recall,35,0.4524,0.0,1.0,gpt-4o-mini,agentic_rag,186.1

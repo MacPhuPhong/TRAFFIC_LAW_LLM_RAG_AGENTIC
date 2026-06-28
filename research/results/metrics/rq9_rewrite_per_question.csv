@@ -1,0 +1,336 @@
+variant,qid,category,used_query,r_at_5,r_at_10,mrr,ndcg_10,f1_token,rouge_l,cit_p,cit_r,cit_f1,refusal,latency_s,pred_answer,standalone_query
+NO_REWRITE,RQ-001,simple_penalty,Vượt đèn đỏ đi xe máy phạt bao nhiêu tiền?,0.0,0.0,0.0,0.0,0.6554621848739497,0.6172304134142816,0.0,0.0,0.0,False,11.888849424998625,"### Phạt đối với xe mô tô, xe gắn máy vượt đèn đỏ
+
+- Hành vi **không chấp hành hiệu lệnh của đèn tín hiệu giao thông** (vượt đèn đỏ): Phạt tiền từ **600.000 đồng** đến **800.000 đồng** [Điều 7, Khoản 3, Điểm a — NĐ 168/2024/NĐ-CP].
+- Ngoài ra, người điều khiển xe còn bị **trừ 02 điểm** giấy phép lái xe [Điều 7, Khoản 13, Điểm a — NĐ 168/2024/NĐ-CP].",
+NO_REWRITE,RQ-002,simple_penalty,Nồng độ cồn mức 1 đối với ô tô phạt bao nhiêu?,0.0,0.0,0.0,0.0,0.49484536082474223,0.5213675213675214,0.0,0.0,0.0,False,7.090503811996314,"### Phạt đối với xe ô tô vi phạm nồng độ cồn
+
+- Hành vi điều khiển xe ô tô trên đường mà trong máu hoặc hơi thở có nồng độ cồn vượt quá **50 miligam đến 80 miligam/100 mililít máu** hoặc vượt quá **0,25 miligam đến 0,4 miligam/1 lít khí thở**: Phạt tiền từ **18.000.000 đồng** đến **20.000.000 đồng** + trừ **04 điểm** GPLX [Điều 6, Khoản 9, Điểm a — NĐ 168/2024/NĐ-CP] [Điều 6, Khoản 16, Điểm b — NĐ 168/2024/NĐ-CP].
+
+*Lưu ý: Tài liệu được cung cấp không quy định cụ thể mức phạt cho ""nồng độ cồn mứ",
+NO_REWRITE,RQ-003,simple_penalty,Không đội mũ bảo hiểm bị phạt bao nhiêu?,0.0,0.0,0.02127659574468085,0.0,0.2310030395136778,0.2675129832660127,0.0,0.0,0.0,False,64.95917160800309,"### 1. Đối với người điều khiển xe mô tô, xe gắn máy
+- Hành vi **không đội mũ bảo hiểm** hoặc đội mũ bảo hiểm **không cài quai đúng quy cách**: Phạt tiền từ **400.000 đồng** đến **600.000 đồng** [Điều 7, Khoản 2, Điểm h — NĐ 168/2024/NĐ-CP].
+- Hành vi **chở người ngồi trên xe không đội mũ bảo hiểm** hoặc đội mũ bảo hiểm không cài quai đúng quy cách (trừ trường hợp chở người bệnh đi cấp cứu, trẻ em dưới 06 tuổi, áp giải người có hành vi vi phạm pháp luật): Phạt tiền từ **400.000 đồng** đến **600.",
+NO_REWRITE,RQ-004,simple_penalty,Đi xe máy vào đường cao tốc phạt bao nhiêu?,0.0,0.0,0.02040816326530612,0.0,0.5753424657534246,0.5855531557475401,0.0,0.0,0.0,False,7.222497394999664,"### Phạt đối với xe mô tô, xe gắn máy đi vào đường cao tốc
+
+- Hành vi điều khiển xe mô tô, xe gắn máy, các loại xe tương tự xe mô tô và các loại xe tương tự xe gắn máy đi vào đường cao tốc (trừ xe phục vụ việc quản lý, bảo trì đường cao tốc): Phạt tiền từ **4.000.000 đồng** đến **6.000.000 đồng** + trừ **06 điểm** giấy phép lái xe [Điều 7, Khoản 7, Điểm b — NĐ 168/2024/NĐ-CP] [Điều 7, Khoản 13, Điểm c — NĐ 168/2024/NĐ-CP].",
+NO_REWRITE,RQ-005,simple_penalty,Bấm còi trong đô thị từ 22 giờ đến 5 giờ sáng bị phạt thế nào?,1.0,1.0,1.0,1.1144130281073454,0.3984375,0.3390820980615736,0.6666666666666666,1.0,0.8,False,16.09340236900607,"### 1. Đối với xe mô tô, xe gắn máy
+- Hành vi sử dụng còi trong thời gian từ **22 giờ** ngày hôm trước đến **05 giờ** ngày hôm sau trong khu đông dân cư, khu vực cơ sở khám bệnh, chữa bệnh (trừ xe ưu tiên): Phạt tiền từ **200.000 đồng** đến **400.000 đồng** [Điều 7, Khoản 1, Điểm i — NĐ 168/2024/NĐ-CP].
+
+### 2. Đối với xe ô tô và các loại xe tương tự xe ô tô
+- Hành vi sử dụng còi trong thời gian từ **22 giờ** ngày hôm trước đến **05 giờ** ngày hôm sau trong khu đông dân cư, khu vực cơ sở khám bệ",
+NO_REWRITE,RQ-006,multi_intent,Vượt đèn đỏ và không mang bằng lái xe máy thì bị phạt tổng cộng bao nhiêu?,0.0,0.5,0.14285714285714285,0.20438239758848611,0.327683615819209,0.2820100502512563,0.0,0.0,0.0,True,7.497072329999355,"### 1. Hành vi vượt đèn đỏ
+- Người điều khiển xe mô tô, xe gắn máy không chấp hành hiệu lệnh của đèn tín hiệu giao thông: Phạt tiền từ **4.000.000 đồng** đến **6.000.000 đồng** [Điều 7, Khoản 7, Điểm c — NĐ 168/2024/NĐ-CP].
+
+### 2. Hành vi không mang bằng lái xe
+- Thông tin về mức phạt đối với hành vi không mang giấy phép lái xe (bằng lái) khi điều khiển xe mô tô, xe gắn máy không có trong tài liệu được cung cấp.
+
+**Lưu ý:** Tổng mức phạt tiền cho hai hành vi trên chưa thể xác định chính xác do ",
+NO_REWRITE,RQ-007,multi_intent,Xe máy chở 3 người và không đội mũ bảo hiểm bị phạt thế nào?,0.5,0.5,1.0,0.8503449055347546,0.27237354085603116,0.2365020103388857,0.2857142857142857,1.0,0.4444444444444445,False,8.003916487999959,"### Phạt đối với xe mô tô, xe gắn máy chở 3 người và không đội mũ bảo hiểm
+
+Hành vi vi phạm của người điều khiển xe mô tô, xe gắn máy được quy định như sau:
+
+- **Hành vi chở theo từ 03 người trở lên trên xe**: Phạt tiền từ **600.000 đồng** đến **800.000 đồng** [Điều 7, Khoản 3, Điểm b — NĐ 168/2024/NĐ-CP].
+- **Hành vi không đội “mũ bảo hiểm cho người đi mô tô, xe máy” hoặc đội không cài quai đúng quy cách**: Phạt tiền từ **400.000 đồng** đến **600.000 đồng** [Điều 7, Khoản 2, Điểm h — NĐ 168/202",
+NO_REWRITE,RQ-008,multi_intent,Hạng B1 và B2 theo luật mới 2024 thay đổi như thế nào?,0.0,0.0,0.0,0.0,0.10526315789473685,0.06998087954110899,0.0,0.0,0.0,True,6.618141455997829,Thông tin này không có trong tài liệu được cung cấp.,
+NO_REWRITE,RQ-009,multi_intent,Độ tuổi lái xe máy 50cc và trên 125cc quy định thế nào?,1.0,1.0,1.0,1.0,0.25641025641025644,0.2089613592765141,0.3333333333333333,1.0,0.5,False,7.518389965996903,"### Quy định về độ tuổi điều khiển xe máy
+
+- **Xe gắn máy (bao gồm xe 50cc):** Người từ đủ **16 tuổi** trở lên được phép điều khiển xe gắn máy [Điều 59, Khoản 1, Điểm a — Luật Trật tự ATGT đường bộ 2024].
+- **Xe mô tô (bao gồm xe trên 125cc):** Người từ đủ **18 tuổi** trở lên được cấp giấy phép lái xe hạng A1, A để điều khiển các loại xe này [Điều 59, Khoản 1, Điểm b — Luật Trật tự ATGT đường bộ 2024].
+
+---
+
+### Mức phạt đối với người từ đủ 16 tuổi đến dưới 18 tuổi vi phạm
+
+- **Điều khiển xe mô ",
+NO_REWRITE,RQ-010,multi_intent,Khi nào bị tịch thu xe và khi nào chỉ bị tạm giữ xe?,0.0,0.0,0.0,0.0,0.16257668711656445,0.11509433962264153,0.0,0.0,0.0,False,9.11851305700111,"Dưới đây là các quy định về việc tịch thu phương tiện và tạm giữ phương tiện dựa trên tài liệu được cung cấp:
+
+### 1. Các trường hợp bị tịch thu phương tiện
+Việc tịch thu phương tiện được áp dụng đối với các hành vi vi phạm nghiêm trọng sau đây:
+
+- **Hành vi liên quan đến số khung, số máy:** Cắt, hàn, tẩy xóa, đục sửa, đóng lại trái phép số khung, số máy; hoặc đưa phương tiện đã bị cắt, hàn, tẩy xóa, đục sửa, đóng lại trái phép số khung, số máy tham gia giao thông [Điều 32, Khoản 17, Điểm a — NĐ",
+NO_REWRITE,RQ-011,cross_reference,Vi phạm tại điểm a khoản 4 Điều 13 Nghị định 168 bị phạt bao nhiêu?,0.0,0.0,0.01639344262295082,0.0,0.28865979381443296,0.18373493975903613,0.5,1.0,0.6666666666666666,False,7.2484641629998805,"### Phạt đối với người điều khiển xe ô tô
+- Hành vi điều khiển xe không có chứng nhận đăng ký xe (hoặc bản sao chứng nhận đăng ký xe có chứng thực kèm theo bản gốc giấy biên nhận của tổ chức tín dụng, chi nhánh ngân hàng nước ngoài trong trường hợp tổ chức tín dụng, chi nhánh ngân hàng nước ngoài giữ bản gốc chứng nhận đăng ký xe) hoặc sử dụng chứng nhận đăng ký xe đã hết hạn sử dụng, hết hiệu lực (kể cả rơ moóc và sơ mi rơ moóc): Phạt tiền từ **2.000.000 đồng** đến **3.000.000 đồng** [Điều 13, ",
+NO_REWRITE,RQ-012,cross_reference,Hình thức phạt bổ sung quy định tại khoản 8 Điều 32 NĐ 168 là gì?,0.0,0.0,0.0,0.0,0.03333333333333333,0.029916625796959292,0.0,0.0,0.0,True,6.369890861999011,Thông tin này không có trong tài liệu được cung cấp.,
+NO_REWRITE,RQ-013,cross_reference,Mức phạt cho hành vi quy định tại điểm h khoản 14 Điều 32 NĐ 168?,1.0,1.0,0.5,2.898287324662436,0.16470588235294117,0.14414414414414412,0.3333333333333333,1.0,0.5,False,7.490971172999707,"### Mức phạt đối với chủ phương tiện vi phạm
+
+Hành vi quy định tại điểm h khoản 14 Điều 32 Nghị định 168/2024/NĐ-CP áp dụng đối với chủ xe ô tô, xe chở người bốn bánh có gắn động cơ, xe chở hàng bốn bánh có gắn động cơ, xe máy chuyên dùng và các loại xe tương tự xe ô tô:
+
+- **Mức phạt tiền:** Từ **28.000.000 đồng** đến **30.000.000 đồng** đối với cá nhân; từ **56.000.000 đồng** đến **60.000.000 đồng** đối với tổ chức [Điều 32, Khoản 14 — NĐ 168/2024/NĐ-CP].
+- **Hình thức xử phạt bổ sung:**
+    -",
+NO_REWRITE,RQ-014,cross_reference,Điểm b khoản 9 Điều 6 quy định mức phạt tiền là bao nhiêu?,0.0,0.0,0.008264462809917356,0.0,0.2894736842105263,0.2024656235182551,0.5,1.0,0.6666666666666666,False,28.12997189199814,"### Mức phạt đối với xe ô tô, xe chở người bốn bánh có gắn động cơ, xe chở hàng bốn bánh có gắn động cơ và các loại xe tương tự xe ô tô
+
+- Hành vi vi phạm quy định tại **điểm b khoản 9 Điều 6** (không chấp hành hiệu lệnh của đèn tín hiệu giao thông): Phạt tiền từ **18.000.000 đồng** đến **20.000.000 đồng** [Điều 6, Khoản 9, Điểm b — NĐ 168/2024/NĐ-CP].
+
+- Ngoài mức phạt tiền, người điều khiển xe thực hiện hành vi này còn bị trừ **04 điểm** giấy phép lái xe [Điều 6, Khoản 16, Điểm b — NĐ 168/2024",
+NO_REWRITE,RQ-015,cross_reference,Khoản 2 Điều 48 NĐ 168 nhắc đến việc tạm giữ phương tiện theo luật nào?,0.0,0.0,0.09090909090909091,0.0,0.3529411764705882,0.30356207438449445,1.0,1.0,1.0,True,6.496516619001341,"Khoản 2 Điều 48 Nghị định 168/2024/NĐ-CP quy định người có thẩm quyền xử phạt có thể quyết định tạm giữ phương tiện, giấy tờ có liên quan đến người điều khiển và phương tiện vi phạm theo quy định tại điểm a, điểm c khoản 1; khoản 2; khoản 6; khoản 7; khoản 8 **Điều 125 của Luật Xử lý vi phạm hành chính** [Điều 48, Khoản 2 — NĐ 168/2024/NĐ-CP].
+
+Thông tin này không có trong tài liệu được cung cấp về mức phạt tiền cụ thể cho hành vi này.",
+NO_REWRITE,RQ-016,procedure,Sát hạch lý thuyết cấp giấy phép lái xe gồm những nội dung gì?,1.0,1.0,1.0,1.0,0.5317220543806647,0.46197333333333324,0.3333333333333333,1.0,0.5,True,7.503081494003709,"### Nội dung sát hạch lý thuyết cấp giấy phép lái xe
+
+Các nội dung sát hạch lý thuyết bao gồm:
+
+- **Các quy định chung:** Các câu hỏi liên quan đến quy định của pháp luật về trật tự, an toàn giao thông đường bộ và kỹ thuật lái xe [Điều 4, Khoản 1, Điểm a — Thông tư 12/2025/TT-BCA] [Điều 17, Khoản 1, Điểm a — Thông tư 35/2024/TT-BGTVT].
+- **Đối với hạng B1 và hạng B trở lên:** Nội dung liên quan đến cấu tạo và sửa chữa thông thường [Điều 4, Khoản 1, Điểm a — Thông tư 12/2025/TT-BCA] [Điều 17, Kho",
+NO_REWRITE,RQ-017,procedure,Thủ tục phục hồi điểm giấy phép lái xe như thế nào?,0.0,0.0,0.0,0.0,0.18050541516245486,0.1861045624739981,0.0,0.0,0.0,False,7.72375141899829,"### 1. Trường hợp giấy phép lái xe chưa bị trừ hết điểm
+Đối với trường hợp giấy phép lái xe chưa bị trừ hết điểm và không bị trừ điểm trong thời hạn 12 tháng kể từ ngày bị trừ điểm gần nhất, thủ tục phục hồi được thực hiện như sau:
+- **Tự động phục hồi:** Khi đủ thời hạn 12 tháng, dữ liệu điểm sẽ được tự động phục hồi đủ **12 điểm** (bao gồm cả trường hợp giấy phép lái xe đang trong thời hạn bị tước quyền sử dụng) và cập nhật vào Cơ sở dữ liệu về xử lý vi phạm hành chính về trật tự, an toàn giao",
+NO_REWRITE,RQ-018,procedure,Điều kiện để được cấp Giấy phép lái xe hạng C là gì?,0.0,0.0,0.0,0.0,0.12188365650969529,0.09139554794520548,0.0,0.0,0.0,True,7.923658298001101,"Để được cấp Giấy phép lái xe (GPLX) hạng C, người học cần đáp ứng các điều kiện sau:
+
+### 1. Điều kiện chung
+- Là công dân Việt Nam, người nước ngoài được phép cư trú hoặc đang làm việc, học tập tại Việt Nam [Điều 7, Khoản 1 — Thông tư 12/2017/TT-BGTVT].
+- Đủ tuổi (tính đến ngày dự sát hạch), sức khỏe và trình độ văn hóa theo quy định [Điều 7, Khoản 2 — Thông tư 12/2017/TT-BGTVT].
+- Đáp ứng tiêu chuẩn sức khỏe Nhóm 3 (áp dụng cho hạng C1, C, D1, D2, D, BE, C1E, CE, D1E, D2E và DE) theo quy định ",
+NO_REWRITE,RQ-019,procedure,Hành vi nào dẫn đến bị thu hồi Giấy phép lái xe theo luật 2024?,1.0,1.0,1.0,1.0,0.245014245014245,0.2770328719723183,0.2,1.0,0.33333333333333337,False,7.549622755999735,"### Các trường hợp bị thu hồi Giấy phép lái xe (GPLX) theo Luật Trật tự, an toàn giao thông đường bộ 2024
+
+Giấy phép lái xe bị thu hồi khi thuộc một trong các trường hợp sau đây:
+
+- **Người được cấp GPLX không đủ điều kiện sức khỏe** theo kết luận của cơ sở khám bệnh, chữa bệnh đối với từng hạng GPLX [Điều 62, Khoản 5, Điểm a — Luật 36/2024/QH15].
+- **GPLX được cấp sai quy định** [Điều 62, Khoản 5, Điểm b — Luật 36/2024/QH15].
+- **GPLX đã quá thời hạn tạm giữ hoặc hết thời hiệu thi hành quyết đị",
+NO_REWRITE,RQ-020,procedure,Xe máy điện có cần phải đăng ký biển số không?,0.0,0.0,0.0,0.0,0.04878048780487805,0.045018450184501846,0.0,0.0,0.0,True,6.007160715002101,Thông tin này không có trong tài liệu được cung cấp.,
+NO_REWRITE,RQ-026,ambiguous_short,vượt tín hiệu đường sắt,0.0,0.0,0.0,0.0,0.31746031746031744,0.2262306136210384,0.0,0.0,0.0,False,8.613252633003867,"Câu hỏi của bạn liên quan đến hành vi vượt tín hiệu đường sắt, tùy thuộc vào đối tượng điều khiển phương tiện mà mức xử phạt được quy định như sau:
+
+### 1. Đối với lái tàu, trưởng tàu, phó trưởng tàu khách phụ trách an toàn
+- Hành vi **điều khiển tàu chạy vượt qua tín hiệu vào ga, ra ga đang ở trạng thái đóng** khi chưa được phép của người chỉ huy chạy tàu: Phạt tiền từ **3.000.000 đồng** đến **6.000.000 đồng** [Điều 10, Khoản 3, Điểm b — Nghị định 81/2026/NĐ-CP].
+- Hình thức xử phạt bổ sung: **",
+NO_REWRITE,RQ-027,ambiguous_short,không có gương xe máy,0.0,0.0,0.03571428571428571,0.0,0.6818181818181818,0.6514717374316228,0.0,0.0,0.0,False,12.558849141001701,"### Phạt đối với xe mô tô, xe gắn máy
+- Hành vi điều khiển xe **không có gương chiếu hậu bên trái** người điều khiển hoặc có nhưng không có tác dụng: Phạt tiền từ **400.000 đồng** đến **600.000 đồng** [Điều 14, Khoản 1, Điểm a — NĐ 168/2024/NĐ-CP].
+- Ngoài ra, người điều khiển xe thực hiện hành vi này còn bị trừ **02 điểm** giấy phép lái xe [Điều 14, Khoản 8, Điểm a — NĐ 168/2024/NĐ-CP].",
+NO_REWRITE,RQ-028,ambiguous_short,đèn vàng có vượt được không,0.3333333333333333,0.3333333333333333,1.0,0.46927872602275644,0.4292237442922374,0.3124320968492938,1.0,0.3333333333333333,0.5,True,6.726293182000518,"Người điều khiển phương tiện tham gia giao thông đường bộ phải chấp hành tín hiệu đèn vàng như sau:
+
+- **Phải dừng lại** trước vạch dừng.
+- Trường hợp đang đi trên vạch dừng hoặc đã đi qua vạch dừng mà tín hiệu đèn chuyển sang màu vàng thì **được đi tiếp**.
+- Trường hợp tín hiệu đèn màu vàng **nhấp nháy**: Người điều khiển phương tiện được đi nhưng phải quan sát, giảm tốc độ hoặc dừng lại nhường đường cho người đi bộ, xe lăn của người khuyết tật qua đường hoặc các phương tiện khác [Điều 11, Khoả",
+NO_REWRITE,RQ-029,ambiguous_short,chở súc vật trên đường,0.5,0.5,1.0,0.6131471927654584,0.16829745596868884,0.141679778227317,0.0,0.0,0.0,False,105.61042447300133,"### 1. Phạt đối với người điều khiển, dẫn dắt vật nuôi
+- Hành vi **để vật nuôi đi trên đường bộ không bảo đảm an toàn** cho người, phương tiện đang tham gia giao thông: Phạt tiền từ **150.000 đồng** đến **250.000 đồng** [Điều 11, Khoản 1, Điểm d — NĐ 168/2024/NĐ-CP].
+- Hành vi **để vật nuôi kéo xe mà không có người điều khiển**: Phạt tiền từ **150.000 đồng** đến **250.000 đồng** [Điều 11, Khoản 1, Điểm e — NĐ 168/2024/NĐ-CP].
+- Hành vi **dẫn dắt vật nuôi chạy theo** khi đang điều khiển hoặc ngồi",
+NO_REWRITE,RQ-030,ambiguous_short,vạch liền,0.0,0.0,0.0,0.0,0.3459915611814346,0.26378378378378375,0.0,0.0,0.0,False,7.622033883999393,"### Phạt đối với hành vi vi phạm vạch kẻ đường
+
+Người điều khiển phương tiện không chấp hành chỉ dẫn của vạch kẻ đường (bao gồm vạch liền) sẽ bị xử phạt như sau:
+
+- **Đối với người điều khiển xe mô tô, xe gắn máy và các loại xe tương tự:**
+    - Phạt tiền từ **200.000 đồng** đến **400.000 đồng** [Điều 7, Khoản 1, Điểm a — NĐ 168/2024/NĐ-CP].
+    - Hành vi này không thuộc danh mục bị trừ điểm giấy phép lái xe theo quy định tại Điều 7, Khoản 13 của Nghị định 168/2024/NĐ-CP.
+
+- **Đối với người điều",
+NO_REWRITE,RQ-031,compound_action,chở 3 người trên xe máy và không đội mũ bảo hiểm bị phạt bao nhiêu,1.0,1.0,1.0,1.3868528072345416,0.4,0.3282624443754528,0.25,1.0,0.4,False,9.527388173999498,"### 1. Hành vi chở 3 người trên xe mô tô, xe gắn máy
+- Người điều khiển xe mô tô, xe gắn máy chở theo từ 03 người trở lên trên xe: Phạt tiền từ **600.000 đồng** đến **800.000 đồng** [Điều 7, Khoản 3, Điểm b — NĐ 168/2024/NĐ-CP].
+
+### 2. Hành vi không đội mũ bảo hiểm
+- Đối với người điều khiển xe: Không đội “mũ bảo hiểm cho người đi mô tô, xe máy” hoặc đội không cài quai đúng quy cách: Phạt tiền từ **400.000 đồng** đến **600.000 đồng** [Điều 7, Khoản 2, Điểm h — NĐ 168/2024/NĐ-CP].
+- Đối với ngườ",
+NO_REWRITE,RQ-032,compound_action,vừa chạy quá tốc độ vừa vượt đèn đỏ ô tô bị phạt như nào,0.0,0.0,0.02857142857142857,0.0,0.44799999999999995,0.3149938972866397,0.4,1.0,0.5714285714285715,False,36.99502777699672,"### Phạt đối với người điều khiển xe ô tô
+
+Đối với hành vi điều khiển xe ô tô vi phạm quy tắc giao thông đường bộ, mức xử phạt được quy định như sau:
+
+- **Hành vi không chấp hành hiệu lệnh của đèn tín hiệu giao thông:** Phạt tiền từ **18.000.000 đồng** đến **20.000.000 đồng** + trừ **04 điểm** GPLX [Điều 6, Khoản 9, Điểm b — NĐ 168/2024/NĐ-CP] [Điều 6, Khoản 16, Điểm b — NĐ 168/2024/NĐ-CP].
+
+- **Hành vi điều khiển xe chạy quá tốc độ quy định:**
+    - Quá tốc độ từ **10 km/h đến 20 km/h**: Phạt t",
+NO_REWRITE,RQ-033,compound_action,đi ngược chiều vào đường cấm bằng xe ô tô,0.0,1.0,0.14285714285714285,0.39780880120575696,0.5018181818181817,0.4863057734344862,0.25,0.5,0.3333333333333333,False,12.296367238996027,"### Phạt đối với xe ô tô đi ngược chiều vào đường cấm
+
+- Hành vi **đi ngược chiều** của đường một chiều hoặc đi ngược chiều trên đường có biển **“Cấm đi ngược chiều”**: Phạt tiền từ **18.000.000 đồng** đến **20.000.000 đồng** + trừ **10 điểm** GPLX [Điều 6, Khoản 9, Điểm d — NĐ 168/2024/NĐ-CP] [Điều 6, Khoản 16, Điểm d — NĐ 168/2024/NĐ-CP].
+
+- Hành vi **đi vào đường có biển báo hiệu có nội dung cấm đi vào** đối với loại phương tiện đang điều khiển: Phạt tiền từ **4.000.000 đồng** đến **6.000.000",
+NO_REWRITE,RQ-034,compound_action,chở 3 người vượt đường ngang đường sắt khi tín hiệu đèn đỏ,0.5,0.5,0.2,0.23719771276929622,0.2902374670184697,0.19419255257572837,0.2,0.5,0.28571428571428575,False,7.347949991999485,"### Mức phạt đối với hành vi vượt đường ngang khi có tín hiệu đèn đỏ
+
+Hành vi vượt đường ngang, cầu chung khi đèn đỏ đã bật sáng bị xử phạt như sau:
+
+- **Đối với người điều khiển xe mô tô, xe gắn máy (kể cả xe máy điện), các loại xe tương tự xe mô tô và xe gắn máy:**
+    - Phạt tiền từ **4.000.000 đồng** đến **6.000.000 đồng** [Điều 13, Khoản 6 — NĐ 81/2026/NĐ-CP].
+    - Hình thức xử phạt bổ sung: Tước quyền sử dụng Giấy phép lái xe từ **01 tháng** đến **03 tháng** [Điều 13, Khoản 11 — NĐ 81/202",
+NO_REWRITE,RQ-035,compound_action,tránh xe tải tông phải trẻ em đi bộ mức phạt bao nhiêu,0.0,0.0,0.0,0.0,0.03278688524590164,0.02856473893701709,0.0,0.0,0.0,True,11.697027827001875,Thông tin này không có trong tài liệu được cung cấp.,
+NO_REWRITE,RQ-036,vehicle_binding,xe ô tô vượt đèn đỏ phạt bao nhiêu,0.0,0.0,0.021739130434782608,0.0,0.4960000000000001,0.4512549537648613,0.0,0.0,0.0,True,6.7697215440057334,"### Phạt đối với xe ô tô vượt đèn đỏ
+
+- Hành vi **không chấp hành hiệu lệnh của đèn tín hiệu giao thông**: Phạt tiền từ **18.000.000 đồng** đến **20.000.000 đồng** [Điều 13, Khoản 9 — Nghị định 81/2026/NĐ-CP].
+
+*Lưu ý: Thông tin về số điểm trừ GPLX cho hành vi này không có trong tài liệu được cung cấp.*",
+NO_REWRITE,RQ-037,vehicle_binding,xe tải chở quá tải bị phạt thế nào,0.0,0.0,0.0,0.0,0.23822714681440443,0.18019761637974943,0.0,0.0,0.0,False,7.147010571999999,"Mức xử phạt đối với hành vi điều khiển xe tải chở quá tải trọng cho phép của đường bộ được quy định tại Điều 34 Nghị định 168/2024/NĐ-CP như sau:
+
+### 1. Quá tải trọng từ 10% đến 20%
+- Phạt tiền từ **4.000.000 đồng** đến **6.000.000 đồng** [Điều 34, Khoản 2 — NĐ 168/2024/NĐ-CP].
+
+### 2. Quá tải trọng trên 20% đến 50%
+- Phạt tiền từ **13.000.000 đồng** đến **15.000.000 đồng** [Điều 34, Khoản 4, Điểm a — NĐ 168/2024/NĐ-CP].
+- Bị trừ **02 điểm** giấy phép lái xe [Điều 34, Khoản 7, Điểm a — NĐ 168/2",
+NO_REWRITE,RQ-038,vehicle_binding,xe máy chuyên dùng đi vào làn cao tốc bị phạt gì,1.0,1.0,1.0,2.2461414348591218,0.3891402714932127,0.33237179487179497,0.5,1.0,0.6666666666666666,False,7.150232334002794,"### Phạt đối với xe máy chuyên dùng đi vào làn dừng xe khẩn cấp hoặc phần lề đường cao tốc
+
+- Hành vi **điều khiển xe máy chuyên dùng chạy ở làn dừng xe khẩn cấp hoặc phần lề đường của đường cao tốc**: Phạt tiền từ **3.000.000 đồng** đến **5.000.000 đồng** [Điều 8, Khoản 6, Điểm e — NĐ 168/2024/NĐ-CP].
+
+### Phạt đối với xe máy chuyên dùng có tốc độ thiết kế nhỏ hơn quy định đi vào đường cao tốc
+
+- Hành vi **điều khiển xe máy chuyên dùng có tốc độ thiết kế nhỏ hơn tốc độ tối thiểu quy định đối vớ",
+NO_REWRITE,RQ-039,vehicle_binding,xe đạp đi không đúng phần đường bị phạt bao nhiêu,1.0,1.0,1.0,2.692888200125607,0.5842696629213483,0.5722326454033771,1.0,1.0,1.0,False,25.01801664800587,"### Phạt đối với xe đạp đi không đúng phần đường
+
+- Hành vi **không đi bên phải theo chiều đi của mình, đi không đúng phần đường quy định**: Phạt tiền từ **100.000 đồng** đến **200.000 đồng** [Điều 9, Khoản 1, Điểm a — NĐ 168/2024/NĐ-CP].",
+NO_REWRITE,RQ-040,vehicle_binding,em chạy xe máy mà có nồng độ cồn 0.4 thì bị phạt bao nhiêu,0.0,0.0,0.047619047619047616,0.0,0.48407643312101906,0.4589510953750831,0.0,0.0,0.0,False,6.370978061997448,"### Mức phạt đối với người điều khiển xe mô tô, xe gắn máy có nồng độ cồn
+
+Đối với hành vi điều khiển xe mô tô, xe gắn máy trên đường mà trong máu hoặc hơi thở có nồng độ cồn vượt quá 80 miligam/100 mililít máu hoặc vượt quá 0,4 miligam/1 lít khí thở:
+
+- Phạt tiền từ **8.000.000 đồng** đến **10.000.000 đồng** [Điều 7, Khoản 9, Điểm d — NĐ 168/2024/NĐ-CP].
+
+*Lưu ý: Tài liệu cung cấp không liệt kê cụ thể số điểm trừ GPLX cho hành vi này tại Điều 7.*",
+REWRITE,RQ-001,simple_penalty,mức phạt vượt đèn đỏ không chấp hành hiệu lệnh đèn tín hiệu giao thông xe mô tô xe gắn máy Điều 7 Khoản 7 Điểm c Nghị định 168/2024 trừ điểm GPLX,0.0,1.0,0.1111111111111111,0.3010299956639812,0.6610169491525423,0.6394874781595807,0.0,0.0,0.0,False,17.520368299003167,"### Phạt đối với xe mô tô, xe gắn máy vượt đèn đỏ
+
+- Hành vi **không chấp hành hiệu lệnh của đèn tín hiệu giao thông**: Phạt tiền từ **4.000.000 đồng** đến **6.000.000 đồng** [Điều 7, Khoản 7, Điểm c — NĐ 168/2024/NĐ-CP].
+- Ngoài ra, người điều khiển xe còn bị trừ **02 điểm** giấy phép lái xe [Điều 7, Khoản 13, Điểm a — NĐ 168/2024/NĐ-CP].",Đi xe máy vượt đèn đỏ bị phạt bao nhiêu tiền?
+REWRITE,RQ-002,simple_penalty,mức phạt nồng độ cồn mức 1 ô tô Điều 6 Nghị định 168/2024 trừ điểm GPLX,1.0,1.0,0.2,0.38685280723454163,0.7,0.7216605721660573,0.5,1.0,0.6666666666666666,False,30.12307012900419,"### Phạt đối với xe ô tô vi phạm nồng độ cồn (mức 1)
+
+- Hành vi: Điều khiển xe ô tô trên đường mà trong máu hoặc hơi thở có nồng độ cồn nhưng chưa vượt quá 50 miligam/100 mililít máu hoặc chưa vượt quá 0,25 miligam/1 lít khí thở.
+- Mức phạt tiền: Từ **6.000.000 đồng** đến **8.000.000 đồng** [Điều 6, Khoản 6, Điểm c — NĐ 168/2024/NĐ-CP].
+- Trừ điểm giấy phép lái xe: Hành vi này bị trừ **04 điểm** GPLX [Điều 6, Khoản 16, Điểm b — NĐ 168/2024/NĐ-CP].",Nồng độ cồn mức 1 đối với xe ô tô bị phạt bao nhiêu tiền và có bị trừ điểm giấy phép lái xe không?
+REWRITE,RQ-003,simple_penalty,mức phạt không đội mũ bảo hiểm khi đi xe mô tô xe gắn máy Điều 7 Khoản 2 Điểm i Nghị định 168/2024,0.0,1.0,0.14285714285714285,0.3333333333333333,0.3183673469387755,0.36237623762376237,0.0,0.0,0.0,False,10.2266094949955,"### Phạt đối với người điều khiển xe mô tô, xe gắn máy
+- Hành vi **không đội “mũ bảo hiểm cho người đi mô tô, xe máy”** hoặc đội mũ bảo hiểm không cài quai đúng quy cách khi điều khiển xe tham gia giao thông: Phạt tiền từ **400.000 đồng** đến **600.000 đồng** [Điều 7, Khoản 2, Điểm h — NĐ 168/2024/NĐ-CP].
+- Hành vi **chở người ngồi trên xe không đội “mũ bảo hiểm cho người đi mô tô, xe máy”** hoặc đội mũ bảo hiểm không cài quai đúng quy cách (trừ trường hợp chở người bệnh đi cấp cứu, trẻ em dưới ","Không đội mũ bảo hiểm khi đi xe mô tô, xe gắn máy bị phạt bao nhiêu tiền?"
+REWRITE,RQ-004,simple_penalty,mức phạt xe máy đi vào đường cao tốc Điều 7 Khoản 6 Điểm b Nghị định 168/2024 trừ điểm GPLX,0.0,0.0,0.02631578947368421,0.0,0.6187050359712231,0.626503006012024,0.0,0.0,0.0,False,9.740691712002445,"### Phạt đối với xe mô tô, xe gắn máy đi vào đường cao tốc
+
+- Hành vi điều khiển xe mô tô, xe gắn máy đi vào đường cao tốc (trừ xe phục vụ việc quản lý, bảo trì đường cao tốc): Phạt tiền từ **4.000.000 đồng** đến **6.000.000 đồng** [Điều 7, Khoản 7, Điểm b — NĐ 168/2024/NĐ-CP].
+
+- Ngoài việc bị phạt tiền, hành vi này còn bị trừ **06 điểm** giấy phép lái xe [Điều 7, Khoản 13, Điểm c — NĐ 168/2024/NĐ-CP].",Đi xe máy vào đường cao tốc bị phạt bao nhiêu tiền?
+REWRITE,RQ-005,simple_penalty,mức phạt bấm còi trong đô thị từ 22 giờ đến 5 giờ sáng xe ô tô Điều 6 Nghị định 168/2024 | mức phạt bấm còi trong đô thị từ 22 giờ đến 5 giờ sáng xe mô tô xe gắn máy Điều 7 Nghị định 168/2024,1.0,1.0,1.0,1.3065735963827294,0.5026178010471204,0.3960304210721573,1.0,1.0,1.0,False,31.250188339996384,"### 1. Đối với xe ô tô và các loại xe tương tự
+- Hành vi sử dụng còi trong thời gian từ **22 giờ** ngày hôm trước đến **05 giờ** ngày hôm sau trong khu đông dân cư, khu vực cơ sở khám bệnh, chữa bệnh: Phạt tiền từ **400.000 đồng** đến **600.000 đồng** [Điều 6, Khoản 1, Điểm đ — NĐ 168/2024/NĐ-CP].
+
+### 2. Đối với xe mô tô, xe gắn máy và các loại xe tương tự
+- Hành vi sử dụng còi trong thời gian từ **22 giờ** ngày hôm trước đến **05 giờ** ngày hôm sau trong khu đông dân cư, khu vực cơ sở khám bện",Bấm còi trong đô thị từ 22 giờ đến 5 giờ sáng bị phạt bao nhiêu tiền?
+REWRITE,RQ-006,multi_intent,mức phạt vượt đèn đỏ không chấp hành hiệu lệnh đèn tín hiệu giao thông xe mô tô xe gắn máy Điều 7 Khoản 7 Điểm c Nghị định 168/2024 trừ điểm GPLX | mức phạt không mang theo giấy phép lái xe khi điều k,0.0,0.0,0.011111111111111112,0.0,0.36046511627906974,0.3018556701030928,0.0,0.0,0.0,True,10.814642636003555,"### 1. Hành vi vượt đèn đỏ
+- Người điều khiển xe mô tô, xe gắn máy không chấp hành hiệu lệnh của đèn tín hiệu giao thông: Phạt tiền từ **4.000.000 đồng** đến **6.000.000 đồng** [Điều 7, Khoản 7, Điểm c — NĐ 168/2024/NĐ-CP].
+
+### 2. Hành vi không mang theo giấy phép lái xe
+- Thông tin về mức phạt đối với hành vi ""không mang theo giấy phép lái xe"" không có trong tài liệu được cung cấp.
+
+**Lưu ý:** Đối với hành vi vượt đèn đỏ, ngoài mức phạt tiền nêu trên, người điều khiển xe còn bị trừ **06 điểm**",Vượt đèn đỏ và không mang theo giấy phép lái xe khi điều khiển xe máy thì bị phạt tổng cộng bao nhiêu tiền?
+REWRITE,RQ-007,multi_intent,mức phạt xe mô tô xe gắn máy chở quá số người quy định chở 3 người Điều 7 Khoản 2 Điểm g Nghị định 168/2024 | mức phạt người điều khiển xe mô tô xe gắn máy không đội mũ bảo hiểm Điều 7 Khoản 2 Điểm i ,1.0,1.0,1.0,1.4413074093566385,0.2846153846153846,0.23398209973007525,0.25,1.0,0.4,False,13.686333518002357,"### Phạt đối với người điều khiển xe mô tô, xe gắn máy chở 3 người và không đội mũ bảo hiểm
+
+Hành vi của người điều khiển xe mô tô, xe gắn máy vi phạm các quy định nêu trên bị xử phạt như sau:
+
+- **Hành vi chở theo từ 03 người trở lên trên xe:** Phạt tiền từ **600.000 đồng** đến **800.000 đồng** [Điều 7, Khoản 3, Điểm b — NĐ 168/2024/NĐ-CP].
+- **Hành vi không đội “mũ bảo hiểm cho người đi mô tô, xe máy” hoặc đội không cài quai đúng quy cách khi điều khiển xe:** Phạt tiền từ **400.000 đồng** đến ",Xe máy chở 3 người và không đội mũ bảo hiểm thì bị phạt như thế nào?
+REWRITE,RQ-008,multi_intent,quy định mới về hạng giấy phép lái xe B1 B2 Luật Trật tự an toàn giao thông đường bộ 36/2024 | thay đổi phân hạng giấy phép lái xe hạng B1 B2 so với luật cũ,0.0,0.0,0.0,0.0,0.3356643356643357,0.18484848484848485,0.0,0.0,0.0,True,10.191115859001002,"Thông tin này không có trong tài liệu được cung cấp.
+
+*Lưu ý: Tài liệu hiện có chỉ cung cấp các quy định chuyển tiếp về việc đổi, cấp lại giấy phép lái xe và phạm vi điều khiển của các hạng giấy phép lái xe cũ so với quy định mới, không chứa thông tin về mức phạt tiền đối với các hành vi vi phạm liên quan đến hạng giấy phép lái xe B1 và B2.*",Hạng giấy phép lái xe B1 và B2 theo Luật Trật tự an toàn giao thông đường bộ 2024 có những thay đổi gì so với trước đây?
+REWRITE,RQ-009,multi_intent,độ tuổi điều khiển xe máy dưới 50cc quy định Luật trật tự an toàn giao thông đường bộ 36/2024 | độ tuổi điều khiển xe mô tô trên 125cc quy định Luật trật tự an toàn giao thông đường bộ 36/2024,1.0,1.0,1.0,1.0,0.3724137931034483,0.3423621278672523,1.0,1.0,1.0,True,10.603563682998356,"### Độ tuổi điều khiển phương tiện
+
+- **Xe gắn máy (dưới 50cc):** Người đủ **16 tuổi** trở lên được điều khiển xe gắn máy [Điều 59, Khoản 1, Điểm a — Luật Trật tự ATGT đường bộ 2024].
+- **Xe mô tô (trên 125cc):** Người đủ **18 tuổi** trở lên được cấp giấy phép lái xe hạng A1, A (phù hợp để điều khiển xe mô tô) [Điều 59, Khoản 1, Điểm b — Luật Trật tự ATGT đường bộ 2024].
+
+Thông tin về mức phạt tiền cho hành vi điều khiển xe khi chưa đủ độ tuổi không có trong tài liệu được cung cấp.",Độ tuổi tối thiểu để điều khiển xe máy dưới 50cc và xe mô tô trên 125cc là bao nhiêu?
+REWRITE,RQ-010,multi_intent,quy định tạm giữ phương tiện giao thông Điều 125 Luật xử lý vi phạm hành chính | quy định tịch thu phương tiện giao thông vi phạm hành chính Điều 126 Luật xử lý vi phạm hành chính | các trường hợp bị ,0.0,0.0,0.0,0.0,0.4426229508196722,0.2795148247978437,0.0,0.0,0.0,True,10.551648362001288,"Thông tin này không có trong tài liệu được cung cấp.
+
+Tài liệu hiện tại chỉ quy định về các trường hợp **tạm giữ phương tiện** để ngăn chặn hành vi vi phạm hoặc để xác minh, giải quyết vụ việc (theo Điều 48, Nghị định 168/2024/NĐ-CP), không chứa thông tin về các trường hợp **tịch thu phương tiện**.",Khi nào thì bị tịch thu xe và khi nào thì chỉ bị tạm giữ xe theo quy định pháp luật?
+REWRITE,RQ-011,cross_reference,mức phạt vi phạm điểm a khoản 4 Điều 13 Nghị định 168/2024/NĐ-CP,0.0,0.0,0.0,0.0,0.03773584905660377,0.03413542249580302,0.0,0.0,0.0,True,9.815133324998897,Thông tin này không có trong tài liệu được cung cấp.,Vi phạm tại điểm a khoản 4 Điều 13 Nghị định 168/2024/NĐ-CP bị phạt bao nhiêu tiền?
+REWRITE,RQ-012,cross_reference,hình thức phạt bổ sung Điều 32 Khoản 8 Nghị định 168/2024/NĐ-CP,0.0,0.0,0.0,0.0,0.03333333333333333,0.029916625796959292,0.0,0.0,0.0,True,10.568701216994668,Thông tin này không có trong tài liệu được cung cấp.,Hình thức phạt bổ sung quy định tại khoản 8 Điều 32 Nghị định 168/2024/NĐ-CP là gì?
+REWRITE,RQ-013,cross_reference,mức phạt điểm h khoản 14 Điều 32 Nghị định 168/2024/NĐ-CP,1.0,1.0,0.3333333333333333,2.5564223974088662,0.1958041958041958,0.17784256559766767,0.3333333333333333,1.0,0.5,False,11.037017937997007,"### Mức phạt đối với chủ phương tiện vi phạm tại điểm h khoản 14 Điều 32
+
+Hành vi vi phạm quy định tại điểm h khoản 14 Điều 32 Nghị định 168/2024/NĐ-CP áp dụng đối với chủ xe ô tô, xe chở người bốn bánh có gắn động cơ, xe chở hàng bốn bánh có gắn động cơ, xe máy chuyên dùng và các loại xe tương tự xe ô tô với mức phạt như sau:
+
+- **Phạt tiền từ 28.000.000 đồng đến 30.000.000 đồng** đối với cá nhân [Điều 32, Khoản 14 — NĐ 168/2024/NĐ-CP].
+- **Phạt tiền từ 56.000.000 đồng đến 60.000.000 đồng** đối",Mức phạt cho hành vi vi phạm được quy định tại điểm h khoản 14 Điều 32 Nghị định 168/2024/NĐ-CP là bao nhiêu?
+REWRITE,RQ-014,cross_reference,mức phạt tiền điểm b khoản 9 Điều 6 Nghị định 168/2024 xe ô tô,0.0,0.0,0.0,0.0,0.12244897959183672,0.11138161898965307,0.0,0.0,0.0,True,9.89885355700244,Thông tin này không có trong tài liệu được cung cấp.,Điểm b khoản 9 Điều 6 Nghị định 168/2024 quy định mức phạt tiền là bao nhiêu đối với xe ô tô?
+REWRITE,RQ-015,cross_reference,Khoản 2 Điều 48 Nghị định 168/2024 tạm giữ phương tiện theo luật nào | quy định tạm giữ phương tiện giao thông theo Luật Trật tự an toàn giao thông đường bộ 36/2024 | căn cứ pháp lý tạm giữ phương tiệ,1.0,1.0,0.3333333333333333,0.5,0.42201834862385323,0.42698059179128217,1.0,1.0,1.0,False,10.46673004400509,"Khoản 2 Điều 48 Nghị định 168/2024/NĐ-CP quy định việc tạm giữ phương tiện, giấy tờ có liên quan đến người điều khiển và phương tiện vi phạm được thực hiện theo quy định tại **điểm a, điểm c khoản 1; khoản 2; khoản 6; khoản 7; khoản 8 Điều 125 của Luật Xử lý vi phạm hành chính** [Điều 48, Khoản 2 — NĐ 168/2024/NĐ-CP].",Khoản 2 Điều 48 Nghị định 168/2024 quy định việc tạm giữ phương tiện dựa trên luật nào?
+REWRITE,RQ-016,procedure,nội dung sát hạch lý thuyết cấp giấy phép lái xe cơ giới đường bộ Điều 21 Thông tư 72/2024/TT-BGTVT | quy trình thi sát hạch lý thuyết lái xe các hạng Điều 21 Thông tư 72/2024/TT-BGTVT,1.0,1.0,0.5,0.6309297535714575,0.45714285714285713,0.4436363636363637,0.5,1.0,0.6666666666666666,True,11.267248685995582,"### Nội dung sát hạch lý thuyết cấp giấy phép lái xe
+
+Nội dung sát hạch lý thuyết bao gồm các câu hỏi liên quan đến các vấn đề sau:
+
+- **Quy định của pháp luật:** Các quy định về trật tự, an toàn giao thông đường bộ [Điều 17, Khoản 1, Điểm a — Thông tư 35/2024/TT-BGTVT] [Điều 4, Khoản 1, Điểm a — Thông tư 12/2025/TT-BCA].
+- **Kỹ thuật lái xe:** Các kiến thức về kỹ thuật điều khiển phương tiện [Điều 17, Khoản 1, Điểm a — Thông tư 35/2024/TT-BGTVT] [Điều 4, Khoản 1, Điểm a — Thông tư 12/2025/TT-BC",Sát hạch lý thuyết cấp giấy phép lái xe gồm những nội dung gì?
+REWRITE,RQ-017,procedure,thủ tục phục hồi điểm giấy phép lái xe sau khi bị trừ điểm Điều 45 Luật trật tự an toàn giao thông đường bộ 36/2024 | quy trình phục hồi điểm bằng lái xe sau khi hoàn thành khóa tập huấn pháp luật gia,1.0,1.0,0.5,0.6309297535714575,0.22172949002217293,0.221406263188993,0.0,0.0,0.0,False,11.44291693300329,"Thủ tục phục hồi điểm giấy phép lái xe (GPLX) được chia thành hai trường hợp chính như sau:
+
+### 1. Trường hợp GPLX chưa bị trừ hết điểm
+- **Điều kiện:** Không bị trừ điểm trong thời hạn **12 tháng** kể từ ngày bị trừ điểm gần nhất [Điều 58, Khoản 2 — Luật Trật tự ATGT đường bộ 2024 (36/2024/QH15)].
+- **Trình tự thực hiện:**
+    - Khi đủ thời hạn **12 tháng**, dữ liệu điểm GPLX sẽ được **tự động phục hồi đủ 12 điểm** (bao gồm cả trường hợp GPLX đang trong thời hạn bị tước quyền sử dụng) [Điều 51",Thủ tục phục hồi điểm giấy phép lái xe như thế nào?
+REWRITE,RQ-018,procedure,điều kiện cấp giấy phép lái xe hạng C độ tuổi sức khỏe trình độ đào tạo Luật trật tự an toàn giao thông đường bộ 36/2024 | quy định về đào tạo sát hạch cấp giấy phép lái xe hạng C Thông tư 72/2024,0.0,0.0,0.0,0.0,0.1160220994475138,0.10417333760273241,0.0,0.0,0.0,True,11.29284257999825,"Để được cấp Giấy phép lái xe (GPLX) hạng C, người học cần đáp ứng các điều kiện sau:
+
+### 1. Điều kiện về độ tuổi và sức khỏe
+- Phải đảm bảo đủ độ tuổi (tính đến ngày dự sát hạch) và tiêu chuẩn sức khỏe theo quy định tại khoản 1 và khoản 2 Điều 59 Luật Trật tự, an toàn giao thông đường bộ [Điều 28, Khoản 1 — Thông tư 35/2024/TT-BGTVT] [Điều 15, Khoản 1 — Thông tư 12/2025/TT-BCA].
+- Tiêu chuẩn sức khỏe áp dụng cho hạng C thuộc Nhóm 3 [Điều 2, Khoản 2, Điểm c — Thông tư 36/2024/TT-BYT].
+
+### 2. Đi",Điều kiện để được cấp Giấy phép lái xe hạng C là gì?
+REWRITE,RQ-019,procedure,các trường hợp bị thu hồi giấy phép lái xe Luật trật tự an toàn giao thông đường bộ 36/2024 | quy định về tước quyền sử dụng giấy phép lái xe và thu hồi giấy phép lái xe Điều 63 Luật 36/2024,1.0,1.0,0.25,0.43067655807339306,0.2369146005509642,0.26832844574780057,0.125,1.0,0.2222222222222222,False,11.046828263999487,"### Các trường hợp bị thu hồi Giấy phép lái xe (GPLX)
+
+Theo quy định tại Luật Trật tự, an toàn giao thông đường bộ 2024, GPLX bị thu hồi khi thuộc một trong các trường hợp sau:
+
+- **Không đủ điều kiện sức khỏe:** Người được cấp GPLX không đủ điều kiện sức khỏe theo kết luận của cơ sở khám bệnh, chữa bệnh đối với từng hạng GPLX [Điều 62, Khoản 5, Điểm a — Luật 36/2024/QH15].
+
+- **Cấp sai quy định:** GPLX được cấp không đúng với các quy định của pháp luật [Điều 62, Khoản 5, Điểm b — Luật 36/2024/Q","Những hành vi hoặc trường hợp nào dẫn đến việc bị thu hồi Giấy phép lái xe theo Luật Trật tự, an toàn giao thông đường bộ 2024?"
+REWRITE,RQ-020,procedure,quy định đăng ký xe máy điện cấp biển số xe Điều 53 Luật trật tự an toàn giao thông đường bộ 36/2024 | thủ tục đăng ký xe máy điện hồ sơ cần thiết Thông tư 72/2024 TT-BCA,0.0,0.0,0.0,0.0,0.04878048780487805,0.045018450184501846,0.0,0.0,0.0,True,9.663473871005408,Thông tin này không có trong tài liệu được cung cấp.,Xe máy điện có bắt buộc phải đăng ký biển số không?
+REWRITE,RQ-026,ambiguous_short,mức phạt vượt qua đường ngang đường sắt khi đèn nhấp nháy chuông kêu rào chắn đóng Điều 6 Khoản 4 Điểm d Điều 7 Khoản 2 Điểm e Nghị định 168/2024 | mức phạt không chấp hành hiệu lệnh đèn tín hiệu giao,0.5,1.0,0.25,0.46845052016107697,0.3541147132169576,0.23189717595944964,0.3333333333333333,1.0,0.5,False,11.851237224000215,"### Các mức phạt đối với hành vi vượt tín hiệu, rào chắn tại đường ngang, cầu chung
+
+Hành vi vượt rào chắn hoặc vượt đường ngang khi đèn đỏ đã bật sáng tại đường ngang, cầu chung được quy định mức phạt tùy theo loại phương tiện như sau:
+
+- **Đối với người điều khiển xe ô tô, các loại xe tương tự xe ô tô:** Phạt tiền từ **18.000.000 đồng** đến **20.000.000 đồng**; ngoài ra còn bị tước quyền sử dụng Giấy phép lái xe từ **01 tháng** đến **03 tháng** [Điều 13, Khoản 9 — Nghị định 81/2026/NĐ-CP] [Điề",Vượt tín hiệu tại đường sắt bị phạt như thế nào?
+REWRITE,RQ-027,ambiguous_short,mức phạt xe máy không có gương chiếu hậu Điều 7 Khoản 1 Điểm a Nghị định 168/2024 | quy định về gương chiếu hậu xe mô tô xe gắn máy Luật trật tự an toàn giao thông đường bộ 36/2024,0.0,0.0,0.024390243902439025,0.0,0.6818181818181818,0.6514717374316228,0.0,0.0,0.0,False,10.784286479000002,"### Phạt đối với xe mô tô, xe gắn máy
+- Hành vi điều khiển xe **không có gương chiếu hậu bên trái** người điều khiển hoặc có nhưng không có tác dụng: Phạt tiền từ **400.000 đồng** đến **600.000 đồng** [Điều 14, Khoản 1, Điểm a — NĐ 168/2024/NĐ-CP].
+- Ngoài ra, người điều khiển xe thực hiện hành vi này còn bị trừ **02 điểm** giấy phép lái xe [Điều 14, Khoản 8, Điểm a — NĐ 168/2024/NĐ-CP].",Xe máy không có gương chiếu hậu bị phạt bao nhiêu tiền?
+REWRITE,RQ-028,ambiguous_short,quy tắc giao thông đèn vàng có được đi tiếp không Điều 11 Luật trật tự an toàn giao thông đường bộ 36/2024 | mức phạt vượt đèn vàng không chấp hành hiệu lệnh đèn tín hiệu giao thông Điều 6 Khoản 9 Điề,0.6666666666666666,0.6666666666666666,1.0,0.6713860725233041,0.3693181818181818,0.23106060606060602,0.5,0.6666666666666666,0.5714285714285715,False,12.197384335995594,"### 1. Quy định về tín hiệu đèn vàng
+- Tín hiệu đèn màu vàng phải dừng lại trước vạch dừng.
+- Trường hợp đang đi trên vạch dừng hoặc đã đi qua vạch dừng mà tín hiệu đèn màu vàng thì được đi tiếp.
+- Trường hợp tín hiệu đèn màu vàng nhấp nháy, người điều khiển phương tiện được đi nhưng phải quan sát, giảm tốc độ hoặc dừng lại nhường đường cho người đi bộ, xe lăn của người khuyết tật qua đường hoặc các phương tiện khác [Điều 11, Khoản 4, Điểm b — Luật Trật tự ATGT đường bộ 2024].
+
+### 2. Mức phạt k",Đèn vàng có được phép vượt qua không và quy định xử phạt như thế nào?
+REWRITE,RQ-029,ambiguous_short,quy định chở súc vật trên xe ô tô Điều 6 Nghị định 168/2024 | quy định chở súc vật trên xe mô tô xe gắn máy Điều 7 Nghị định 168/2024 | mức phạt chở súc vật gây mất an toàn giao thông Điều 6 Điều 7 Ng,0.0,0.0,0.0,0.0,0.18454935622317598,0.16969399443626249,0.0,0.0,0.0,False,16.4174164510041,"### 1. Đối với xe mô tô, xe gắn máy
+- Hành vi **dẫn dắt vật nuôi** khi đang điều khiển xe: Phạt tiền từ **600.000 đồng** đến **800.000 đồng** [Điều 7, Khoản 3, Điểm e — NĐ 168/2024/NĐ-CP].
+- Hành vi **sử dụng xe để dẫn dắt vật nuôi**: Bị cấm theo quy định [Điều 33, Khoản 3, Điểm đ — Luật 36/2024/QH15].
+
+### 2. Đối với người điều khiển, dẫn dắt vật nuôi đi bộ hoặc xe vật nuôi kéo
+- Hành vi **để vật nuôi đi trên đường bộ** không bảo đảm an toàn cho người, phương tiện: Phạt tiền từ **150.000 đồng**",Quy định pháp luật về việc chở súc vật trên các loại phương tiện giao thông đường bộ?
+REWRITE,RQ-030,ambiguous_short,mức phạt lỗi đè vạch liền không chấp hành vạch kẻ đường Điều 6 Khoản 2 Điểm a Điều 7 Khoản 2 Điểm a Nghị định 168/2024 | quy tắc giao thông vạch kẻ đường vạch liền vạch đứt Điều 11 Luật trật tự an toà,1.0,1.0,1.0,1.0,0.0,0.0,0.0,0.0,0.0,True,10.400687111003208,Thông tin này không có trong tài liệu được cung cấp.,Quy định về vạch kẻ đường vạch liền và mức phạt khi đè vạch là gì?
+REWRITE,RQ-031,compound_action,mức phạt chở quá số người quy định xe mô tô xe gắn máy chở 3 Điều 7 Khoản 2 Điểm g Nghị định 168/2024 | mức phạt không đội mũ bảo hiểm xe mô tô xe gắn máy Điều 7 Khoản 2 Điểm i Nghị định 168/2024,1.0,1.0,1.0,1.6309297535714575,0.4115755627009646,0.2878683241252302,0.125,1.0,0.2222222222222222,False,11.261612423004408,"### Mức phạt đối với hành vi chở 3 người và không đội mũ bảo hiểm trên xe máy
+
+Hành vi chở 3 người và không đội mũ bảo hiểm khi điều khiển xe mô tô, xe gắn máy được quy định xử phạt như sau:
+
+- **Hành vi chở theo từ 03 người trở lên trên xe:** Phạt tiền từ **600.000 đồng** đến **800.000 đồng** [Điều 7, Khoản 3, Điểm b — NĐ 168/2024/NĐ-CP].
+- **Hành vi không đội “mũ bảo hiểm cho người đi mô tô, xe máy” hoặc đội không cài quai đúng quy cách khi điều khiển xe:** Phạt tiền từ **400.000 đồng** đến **",Chở 3 người trên xe máy và không đội mũ bảo hiểm thì bị phạt bao nhiêu tiền?
+REWRITE,RQ-032,compound_action,mức phạt chạy quá tốc độ xe ô tô Điều 6 Khoản 5 Khoản 6 Khoản 7 Nghị định 168/2024 trừ điểm GPLX | mức phạt vượt đèn đỏ không chấp hành hiệu lệnh đèn tín hiệu giao thông xe ô tô Điều 6 Khoản 4 Điểm a ,0.0,0.5,0.125,0.19342640361727081,0.4824120603015076,0.3477641190094424,0.14285714285714285,0.5,0.22222222222222224,False,12.07956638000178,"### Phạt đối với người điều khiển xe ô tô
+
+Người điều khiển xe ô tô thực hiện hành vi chạy quá tốc độ và vượt đèn đỏ sẽ bị xử phạt cho từng hành vi vi phạm như sau:
+
+*   **Hành vi vượt đèn đỏ:** Phạt tiền từ **18.000.000 đồng** đến **20.000.000 đồng** + trừ **04 điểm** GPLX [Điều 6, Khoản 9, Điểm b — NĐ 168/2024/NĐ-CP] [Điều 6, Khoản 16, Điểm b — NĐ 168/2024/NĐ-CP].
+
+*   **Hành vi chạy quá tốc độ:** Mức phạt phụ thuộc vào tốc độ vượt quá quy định:
+    *   Vượt từ **05 km/h** đến dưới **10 km/h**",Người điều khiển xe ô tô vừa chạy quá tốc độ vừa vượt đèn đỏ thì bị phạt như thế nào?
+REWRITE,RQ-033,compound_action,mức phạt xe ô tô đi ngược chiều vào đường cấm Điều 6 Khoản 5 Điểm c Nghị định 168/2024 trừ điểm GPLX | quy định xử phạt hành vi đi vào đường cấm đối với xe ô tô Điều 6 Khoản 4 Điểm i Nghị định 168/202,0.5,1.0,0.3333333333333333,0.8889580943680542,0.5588235294117647,0.4268577140953016,0.0,0.0,0.0,False,11.23555769300583,"### Phạt đối với xe ô tô đi ngược chiều vào đường cấm
+
+Hành vi điều khiển xe ô tô đi ngược chiều của đường một chiều hoặc đi ngược chiều trên đường có biển “Cấm đi ngược chiều” bị xử phạt như sau:
+
+- Phạt tiền từ **18.000.000 đồng** đến **20.000.000 đồng** [Điều 6, Khoản 9, Điểm d — NĐ 168/2024/NĐ-CP].
+- Bị trừ **04 điểm** giấy phép lái xe [Điều 6, Khoản 16, Điểm b — NĐ 168/2024/NĐ-CP].
+
+*Lưu ý: Mức phạt trên không áp dụng đối với các trường hợp xe ưu tiên đang đi làm nhiệm vụ khẩn cấp theo quy ",Đi ngược chiều vào đường cấm bằng xe ô tô bị phạt bao nhiêu?
+REWRITE,RQ-034,compound_action,mức phạt chở quá số người quy định xe mô tô xe gắn máy chở 3 Điều 7 Khoản 2 Điểm g Nghị định 168/2024 | mức phạt vượt qua đường ngang đường sắt khi đèn nhấp nháy chuông kêu rào chắn đóng Điều 7 Khoản ,0.5,1.0,0.2,0.45560514958746035,0.6,0.43254742067009394,0.25,0.5,0.3333333333333333,False,39.285861100004695,"### 1. Hành vi chở 3 người trên xe mô tô
+- Phạt tiền từ **600.000 đồng** đến **800.000 đồng** [Điều 7, Khoản 3, Điểm b — NĐ 168/2024/NĐ-CP].
+- Bị trừ **02 điểm** giấy phép lái xe [Điều 7, Khoản 13, Điểm a — NĐ 168/2024/NĐ-CP].
+
+### 2. Hành vi vượt đường ngang đường sắt khi đèn đỏ đã bật sáng
+- Phạt tiền từ **4.000.000 đồng** đến **6.000.000 đồng** [Điều 13, Khoản 6 — NĐ 81/2026/NĐ-CP].
+- Bị tước quyền sử dụng giấy phép lái xe từ **01 tháng** đến **03 tháng** [Điều 13, Khoản 11 — NĐ 81/2026/NĐ-CP",Người điều khiển xe mô tô chở 3 người và vượt đường ngang đường sắt khi có tín hiệu đèn đỏ thì bị phạt như thế nào?
+REWRITE,RQ-035,compound_action,mức phạt người điều khiển xe gây tai nạn giao thông làm thiệt hại về người Điều 6 Khoản 10 Điều 7 Khoản 10 Nghị định 168/2024 trừ điểm GPLX | quy tắc giao thông nhường đường người đi bộ trẻ em qua đườ,0.6666666666666666,0.6666666666666666,1.0,0.8395700624665824,0.2857142857142857,0.20244606969454856,0.2,0.6666666666666666,0.30769230769230765,False,13.010204325000814,"### Phân tích xử lý vi phạm đối với người điều khiển xe gây tai nạn
+
+Việc xác định mức phạt đối với người điều khiển xe gây tai nạn khi tránh xe tải dẫn đến va chạm với người đi bộ được quy định cụ thể theo loại phương tiện như sau:
+
+### 1. Đối với người điều khiển xe ô tô
+- Hành vi điều khiển xe không quan sát, giảm tốc độ hoặc dừng lại để bảo đảm an toàn theo quy định mà gây tai nạn giao thông: Phạt tiền từ **20.000.000 đồng** đến **22.000.000 đồng** [Điều 6, Khoản 10, Điểm a — NĐ 168/2024/NĐ-","Khi tránh xe tải dẫn đến va chạm với trẻ em đi bộ qua đường, người lái bị phạt bao nhiêu và xử lý thế nào?"
+REWRITE,RQ-036,vehicle_binding,mức phạt xe ô tô vượt đèn đỏ không chấp hành hiệu lệnh đèn tín hiệu giao thông Điều 6 Khoản 5 Điểm e Nghị định 168/2024 trừ điểm GPLX,0.5,0.5,0.3333333333333333,0.3065735963827292,0.6315789473684211,0.5663739021329988,1.0,1.0,1.0,False,17.95583103899844,"### Phạt đối với xe ô tô vượt đèn đỏ
+
+- Hành vi **không chấp hành hiệu lệnh của đèn tín hiệu giao thông**: Phạt tiền từ **18.000.000 đồng** đến **20.000.000 đồng** [Điều 6, Khoản 9, Điểm b — NĐ 168/2024/NĐ-CP].
+- Về việc trừ điểm giấy phép lái xe (GPLX): Hành vi này bị trừ **04 điểm** GPLX [Điều 6, Khoản 16, Điểm b — NĐ 168/2024/NĐ-CP].",Xe ô tô vượt đèn đỏ bị phạt bao nhiêu tiền và có bị trừ điểm giấy phép lái xe không?
+REWRITE,RQ-037,vehicle_binding,mức phạt xe tải chở hàng quá trọng tải cho phép Điều 6 Khoản 5 Khoản 6 Nghị định 168/2024 | quy định xử phạt vi phạm hành chính xe ô tô tải chở quá tải trọng trừ điểm GPLX,0.0,0.0,0.0,0.0,0.23783783783783785,0.18223461461860185,0.0,0.0,0.0,False,22.077361880001263,"### Mức phạt đối với xe ô tô tải chở hàng quá trọng tải cho phép
+
+Hành vi điều khiển xe ô tô tải chở hàng vượt quá trọng tải cho phép của đường bộ bị xử phạt theo các mức sau:
+
+- **Quá tải trọng trên 10% đến 20%**: Phạt tiền từ **4.000.000 đồng** đến **6.000.000 đồng** [Điều 34, Khoản 2 — NĐ 168/2024/NĐ-CP].
+- **Quá tải trọng trên 20% đến 50%**: Phạt tiền từ **13.000.000 đồng** đến **15.000.000 đồng** + trừ **02 điểm** GPLX [Điều 34, Khoản 4, Điểm a — NĐ 168/2024/NĐ-CP] [Điều 34, Khoản 7, Điểm a",Xe ô tô tải chở hàng quá trọng tải cho phép thì bị phạt như thế nào?
+REWRITE,RQ-038,vehicle_binding,mức phạt xe máy chuyên dùng đi vào đường cao tốc Điều 8 Nghị định 168/2024 | quy định xe máy chuyên dùng tham gia giao thông trên đường cao tốc Luật trật tự an toàn giao thông đường bộ 36/2024,1.0,1.0,0.5,1.3739897479140213,0.49673202614379086,0.33590308370044053,0.0,0.0,0.0,False,75.60089394199895,"### Phạt đối với xe máy chuyên dùng đi vào đường cao tốc
+
+Người điều khiển xe máy chuyên dùng có tốc độ thiết kế nhỏ hơn tốc độ tối thiểu quy định đối với đường cao tốc mà đi vào đường cao tốc (trừ phương tiện, thiết bị phục vụ việc quản lý, bảo trì đường cao tốc) sẽ bị xử phạt như sau:
+
+- Phạt tiền từ **14.000.000 đồng** đến **16.000.000 đồng** [Điều 8, Khoản 8, Điểm b — Nghị định 168/2024/NĐ-CP].",Xe máy chuyên dùng đi vào đường cao tốc bị phạt như thế nào?
+REWRITE,RQ-039,vehicle_binding,mức phạt xe đạp đi không đúng phần đường quy định Điều 9 Nghị định 168/2024,1.0,1.0,1.0,3.5666117088719353,0.7252747252747253,0.7189686924493555,0.5,1.0,0.6666666666666666,False,12.091117333999136,"### Phạt đối với xe đạp, xe đạp máy, xe thô sơ
+- Hành vi **không đi bên phải theo chiều đi của mình, đi không đúng phần đường quy định**: Phạt tiền từ **100.000 đồng** đến **200.000 đồng** [Điều 9, Khoản 1, Điểm a — Nghị định 168/2024/NĐ-CP].",Xe đạp đi không đúng phần đường quy định thì bị phạt bao nhiêu tiền?
+REWRITE,RQ-040,vehicle_binding,mức phạt nồng độ cồn xe máy vượt quá 0.4 miligam trên một lít khí thở Điều 7 Khoản 8 Nghị định 168/2024 trừ điểm GPLX,0.0,0.0,0.09090909090909091,0.0,0.513888888888889,0.5236051502145923,0.0,0.0,0.0,False,11.478357457999664,"### Phạt đối với người điều khiển xe mô tô, xe gắn máy
+- Hành vi điều khiển xe trên đường mà trong máu hoặc hơi thở có nồng độ cồn vượt quá **0,4 miligam/1 lít khí thở**: Phạt tiền từ **8.000.000 đồng** đến **10.000.000 đồng** [Điều 7, Khoản 9, Điểm d — NĐ 168/2024/NĐ-CP].
+
+- Ngoài hình thức phạt tiền, người điều khiển xe còn bị trừ **06 điểm** giấy phép lái xe [Điều 7, Khoản 13, Điểm c — NĐ 168/2024/NĐ-CP].",Người điều khiển xe máy có nồng độ cồn 0.4 miligam trên một lít khí thở thì bị phạt bao nhiêu tiền?

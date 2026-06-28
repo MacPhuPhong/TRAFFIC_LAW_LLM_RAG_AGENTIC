@@ -1,0 +1,4 @@
+pipeline,f1,rouge_l,latency_s
+agentic_rag,0.3143,0.2789,26.8435
+gemini_only,0.3752,0.2848,3.4372
+vanilla_rag,0.272,0.2322,7.366

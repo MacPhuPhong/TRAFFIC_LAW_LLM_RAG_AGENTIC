@@ -1,0 +1,5 @@
+metric,n,mean,min,max
+faithfulness,5,0.24,0.0,1.0
+answer_relevancy,5,1.0,1.0,1.0
+context_precision,5,0.4,0.0,0.8
+context_recall,5,0.3,0.0,1.0

@@ -1,0 +1,9 @@
+,mean
+latency_s,0.122
+recall@1,0.2
+recall@3,0.25
+recall@5,0.3
+recall@10,0.475
+recall@20,0.55
+mrr,0.3105
+ndcg@10,0.3428

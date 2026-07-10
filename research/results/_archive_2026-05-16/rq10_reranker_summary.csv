@@ -1,3 +1,0 @@
-mode,recall@10,mrr,ndcg@10,latency_ms_mean,latency_ms_p95,n
-hybrid,0.58,0.2407,0.2743,90.568,107.68,25
-hybrid+rerank,0.56,0.2573,0.2893,41897.204,44929.78,25

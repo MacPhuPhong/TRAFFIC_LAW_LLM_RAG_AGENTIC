@@ -1,6 +1,0 @@
-id,faithfulness,answer_relevancy,context_precision,context_recall
-RQ-001,0.0,1.0,0.6,0.0
-RQ-002,0.2,1.0,0.2,0.0
-RQ-003,1.0,1.0,0.8,0.5
-RQ-004,0.0,1.0,0.0,0.0
-RQ-005,0.0,1.0,0.4,1.0

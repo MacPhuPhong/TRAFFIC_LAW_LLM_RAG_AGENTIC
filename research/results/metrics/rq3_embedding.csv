@@ -1,5 +1,0 @@
-model,hf_id,max_seq_length,dim,encode_corpus_s,query_encode_ms,recall@5,recall@10,recall@20,mrr,ndcg@10
-vietnamese-sbert,KeepItReal/vietnamese-sbert,256,768,994.81,25.28,0.1524,0.2667,0.3238,0.1293,0.2396
-multilingual-mpnet,paraphrase-multilingual-mpnet-base-v2,128,768,1087.54,85.89,0.1714,0.1952,0.2238,0.1396,0.2146
-multilingual-e5-small,intfloat/multilingual-e5-small,512,384,733.93,20.88,0.281,0.3667,0.4524,0.2382,0.3623
-multilingual-e5-base,intfloat/multilingual-e5-base,512,768,2243.96,71.46,0.2952,0.4238,0.5095,0.2767,0.4725

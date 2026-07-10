@@ -1,4 +1,0 @@
-backend,n_points,dim,p50_ms,p95_ms,mean_ms,recall@10,peak_rss_mb,notes
-"Qdrant (server, hnsw)",2818,768,3.67,4.29,3.84,0.58,1537.8,"server process, separate"
-"Chroma (persistent, hnsw)",2818,768,2.31,2.42,2.3,0.58,1590.2,in-process
-"FAISS (IVF-Flat nlist=64, nprobe=8)",2818,768,0.03,0.04,0.03,0.58,1253.3,"in-memory, approximate"

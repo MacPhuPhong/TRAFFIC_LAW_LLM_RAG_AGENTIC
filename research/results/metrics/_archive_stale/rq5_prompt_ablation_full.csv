@@ -1,5 +1,0 @@
-Prompt,F1 Score,Latency (s)
-P0_zero_shot,0.2677,5.18
-P1_role_based,0.2404,3.87
-P2_structured,0.3263,3.25
-P3_engineered,0.3039,3.44

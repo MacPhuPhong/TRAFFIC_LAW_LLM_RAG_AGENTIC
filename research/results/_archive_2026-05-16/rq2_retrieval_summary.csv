@@ -1,3 +1,0 @@
-chunker,recall@5_khoan,recall@10_khoan,recall@20_khoan,mrr_khoan,ndcg@10_khoan,recall@5_doc,recall@10_doc,recall@20_doc,mrr_doc,ndcg@10_doc,latency_s
-fixed_512,0.24,0.3,0.32,0.0602,0.0575,0.92,0.96,0.96,0.592,2.3128,0.0461
-hierarchical,0.44,0.58,0.64,0.2484,0.2743,0.96,0.96,1.0,0.6792,2.4948,0.1093

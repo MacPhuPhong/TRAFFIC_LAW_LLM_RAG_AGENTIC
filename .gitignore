@@ -33,10 +33,8 @@ qdrant_storage/
 *.swp
 *.swo
 
-# Project specific — ignore Data contents but allow specific files
-Data/*
-!Data/README.md
-!Data/all_chunks.jsonl
+# Project specific — Data not published
+Data/
 **/__pycache__/
 *.log
 
@@ -54,8 +52,8 @@ checkpoints/
 app/nextjs-app/node_modules/
 app/nextjs-app/.next/
 
-# Documentation and Research
-# doc/
-# research/
+# Documentation and Research — not published
+doc/
+research/
 app/nextjs-app.bak/
 

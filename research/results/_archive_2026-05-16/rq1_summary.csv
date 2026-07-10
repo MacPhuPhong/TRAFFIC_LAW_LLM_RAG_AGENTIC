@@ -1,4 +1,0 @@
-pipeline,f1,rouge_l,latency_s
-agentic_rag,0.3135,0.2745,16.6754
-gemini_only,0.3699,0.2818,4.457
-vanilla_rag,0.2779,0.2425,5.5561

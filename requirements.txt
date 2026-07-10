@@ -1,0 +1,55 @@
+# --- Combined AI Requirements for Traffic RAG and Retrieval System ---
+
+# Generative AI & Orchestration
+langchain
+langchain-community
+langchain-core
+langchain-google-genai
+langchain-huggingface
+langchain-openai
+google-generativeai
+langsmith
+langgraph
+langgraph-checkpoint-sqlite
+langgraph-checkpoint-postgres
+psycopg[binary,pool]
+tavily-python
+
+# Vector Database & Retrieval
+qdrant-client>=1.17.0,<1.20.0
+langchain-qdrant==0.2.0
+rank-bm25==0.2.2
+pgvector>=0.3.0
+
+# NLP & Vietnamese Support
+pyvi==0.1.1
+sentence-transformers==4.1.0
+transformers==4.52.2
+tokenizers==0.21.1
+nltk==3.9.1
+
+# Processing & Data
+pypdf==5.1.0
+beautifulsoup4==4.12.3
+pandas==2.2.3
+numpy==2.2.6
+scikit-learn==1.6.1
+scipy==1.15.3
+tqdm==4.67.1
+
+# Web & API
+fastapi==0.115.12
+uvicorn==0.34.2
+python-dotenv==1.1.0
+pydantic==2.11.4
+pydantic-settings==2.9.1
+httpx==0.28.1
+requests==2.32.3
+
+# Core Utilities
+psutil==7.0.0
+tenacity==9.1.2
+pyyaml==6.0.2
+pillow==11.2.1
+python-multipart==0.0.20
+
